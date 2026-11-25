@@ -1,13 +1,17 @@
 local Duel = {}
 Duel.__index = Duel
 
--- Version 1 encodes a board, mode and seed, followed by three base-36 digits per shot.
--- A shot records its signed angle in ten-thousandths of a radian, offset to be nonnegative.
-local maxSeed, maxRounds, angleLimit, angleScale = 2147483646, 48, 12200, 10000
+-- Codes encode a board, mode and seed, followed by three base-36 digits per replay shot.
+-- The aim limit in angle units is also the offset for signed shots and is fixed per version.
+local maxSeed, maxRounds, angleScale = 2147483646, 48, 10000
+local legacyVersion, currentVersion = 1, 2
+local angleLimits = {[legacyVersion] = 12200, [currentVersion] = 18300}
+local legacyBoards = {grove = true, foundry = true, basin = true, crown = true, tide = true, vault = true}
+local legacyModes = {standard = true, precision = true, practice = true}
 local maxCodeLength = 192
 local digits = "0123456789abcdefghijklmnopqrstuvwxyz"
 local eventName = "pegworks_duel_tell"
-local eventPattern = "#1# tells you, 'PW1#2#'"
+local eventPattern = "#1# tells you, 'PW#2#'"
 
 local function integer(value, minimum, maximum)
     return type(value) == "number" and value >= minimum and value <= maximum and value == math.floor(value)
@@ -21,7 +25,12 @@ local function validPeer(name)
     return type(name) == "string" and #name <= 63 and name:match("^[A-Za-z]+$") ~= nil
 end
 
-local function encodeAngle(angle)
+local function versionForAngle(maxAngle)
+    if maxAngle == angleLimits[legacyVersion] / angleScale then return legacyVersion end
+    if maxAngle == nil or maxAngle == angleLimits[currentVersion] / angleScale then return currentVersion end
+end
+
+local function encodeAngle(angle, angleLimit)
     local value = angle + angleLimit
     local high = math.floor(value / 1296) + 1
     local middle = math.floor(value / 36) % 36 + 1
@@ -29,15 +38,19 @@ local function encodeAngle(angle)
     return digits:sub(high, high) .. digits:sub(middle, middle) .. digits:sub(low, low)
 end
 
-local function encodeHeader(kind, boardId, seed, modeId)
+local function encodeHeader(version, kind, boardId, seed, modeId)
+    if not angleLimits[version] then return nil, "This aim range cannot be shared." end
     if not validId(boardId) or not validId(modeId) or not integer(seed, 1, maxSeed) then
         return nil, "This board, mode, or seed cannot be shared."
     end
-    return string.format("PW1%s-%s-%s-%.0f", kind, boardId, modeId, seed)
+    if version == legacyVersion and not (legacyBoards[boardId] and legacyModes[modeId]) then
+        return nil, "This board or mode is unavailable with legacy rules."
+    end
+    return string.format("PW%d%s-%s-%s-%.0f", version, kind, boardId, modeId, seed)
 end
 
-function Duel.challenge(boardId, seed, modeId)
-    return encodeHeader("C", boardId, seed, modeId)
+function Duel.challenge(boardId, seed, modeId, maxAngle)
+    return encodeHeader(versionForAngle(maxAngle), "C", boardId, seed, modeId)
 end
 
 function Duel.result(run)
@@ -45,15 +58,17 @@ function Duel.result(run)
     if result.phase ~= "won" and result.phase ~= "lost" then
         return nil, "Finish the round to share a replay."
     end
-    local header, err = encodeHeader("R", result.boardId, result.seed, result.modeId)
+    local version = versionForAngle(run.maxAngle)
+    local header, err = encodeHeader(version, "R", result.boardId, result.seed, result.modeId)
     if not header then return nil, err end
 
+    local angleLimit = angleLimits[version]
     local angles = run.angles
     if #angles < 1 or #angles > maxRounds then return nil, "This round cannot be shared." end
     local shots = {}
     for i, angle in ipairs(angles) do
         if not integer(angle, -angleLimit, angleLimit) then return nil, "This shot cannot be shared." end
-        shots[i] = encodeAngle(angle)
+        shots[i] = encodeAngle(angle, angleLimit)
     end
     return header .. "-" .. table.concat(shots)
 end
@@ -68,15 +83,21 @@ end
 local function decode(game, code)
     if type(code) ~= "string" or #code > maxCodeLength then return nil, "Enter a valid Peggle code." end
     code = code:lower():match("^%s*(.-)%s*$")
-    local kind, boardId, modeId, seedText, tail = code:match("^pw1([cr])%-([a-z]+)%-([a-z]+)%-(%d+)(.*)$")
-    if not kind then return nil, "Enter a Peggle v1 challenge or replay code." end
+    local versionText, kind, boardId, modeId, seedText, tail = code:match("^pw(%d)([cr])%-([a-z]+)%-([a-z]+)%-(%d+)(.*)$")
+    local version = tonumber(versionText)
+    local angleLimit = angleLimits[version]
+    if not angleLimit then return nil, "Enter a supported Peggle challenge or replay code." end
 
     local seed = tonumber(seedText)
-    local header = encodeHeader(kind:upper(), boardId, seed, modeId)
-    if not header or not hasId(game.boards, boardId) or not hasId(game.modes, modeId) then
+    local header, err = encodeHeader(version, kind:upper(), boardId, seed, modeId)
+    if not header then return nil, err end
+    if not hasId(game.boards, boardId) or not hasId(game.modes, modeId) then
         return nil, "This board, mode, or seed is unavailable."
     end
-    local entry = {kind = "challenge", boardId = boardId, seed = seed, modeId = modeId, code = header}
+    local entry = {
+        kind = "challenge", boardId = boardId, seed = seed, modeId = modeId, code = header,
+        version = version, maxAngle = angleLimit / angleScale,
+    }
     if kind == "c" then
         if tail == "" then return entry end
         return nil, "This challenge code has extra text."
@@ -106,7 +127,7 @@ function Duel:import(code)
     local entry, err = decode(self.game, code)
     if not entry then return nil, err end
     if entry.kind == "result" then
-        self.replayRun = self.game.new(entry.boardId, entry.seed, entry.modeId)
+        self.replayRun = self.game.new(entry.boardId, entry.seed, entry.modeId, entry.maxAngle)
         self.replay = entry
         self.shotIndex = 1
         self.shotSteps = 0
@@ -127,6 +148,8 @@ function Duel:tick()
             if self.shotIndex == #entry.angles + 1 then
                 self.verified = run:result()
                 self.verified.code = entry.code
+                self.verified.maxAngle = entry.maxAngle
+                self.verified.version = entry.version
             else
                 self.error = "This replay lists shots after the round ended."
             end
@@ -169,7 +192,7 @@ function Duel:listen(enabled)
 
     local ok = pcall(self.mq.event, eventName, eventPattern, function(_, peer, suffix)
         if not self.listening or not validPeer(peer) then return end
-        local incoming = decode(self.game, "PW1" .. suffix)
+        local incoming = decode(self.game, "PW" .. suffix)
         if incoming then self.inbox = {peer = peer, code = incoming.code, kind = incoming.kind} end
     end)
     if not ok then return nil, "Listening for tells is unavailable. You can still paste a code." end

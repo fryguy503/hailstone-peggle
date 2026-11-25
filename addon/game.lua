@@ -8,7 +8,9 @@ local Game = {
     catcherWidth = 116,
     catcherY = 516,
     maxSeed = 2147483646,
-    maxAngle = 1.22,
+    legacyMaxAngle = 1.22,
+    -- Clear upward launches stay below the ceiling at this angle.
+    maxAngle = 1.83,
     angleScale = 10000,
     maxRounds = 48,
 }
@@ -20,10 +22,16 @@ Game.boards = {
     { id = "crown", name = "Copper Crown", description = "Three raised points give way to a broad base.", targets = 20 },
     { id = "tide", name = "Tideglass Reach", description = "Five offset waves offer long routes across the field.", targets = 22 },
     { id = "vault", name = "Quartz Vault", description = "Five diamond clusters leave open lanes along the walls.", targets = 20 },
+    { id = "harbor", name = "Ember Harbor", description = "Five bows funnel shots toward the harbor floor.", targets = 21 },
+    { id = "spire", name = "Glass Spire", description = "A narrow tower opens onto a wide, stepped base.", targets = 18 },
+    { id = "delta", name = "Saffron Delta", description = "Three channels diverge into the lower corners.", targets = 20 },
+    { id = "switchback", name = "Iron Switchback", description = "Alternating ramps link up along the walls.", targets = 22 },
+    { id = "parallax", name = "Violet Parallax", description = "Twin arrowheads face an open central corridor.", targets = 18 },
+    { id = "sundial", name = "Sunstone Dial", description = "Sweep through the rays above a broad pedestal.", targets = 20 },
 }
 
 Game.modes = {
-    { id = "standard", name = "Standard", description = "Twelve shots with a standard aim guide.", shots = 12, guideSteps = 72 },
+    { id = "standard", name = "Standard", description = "Twelve shots with a standard aim guide.", shots = 12, guideSteps = 100 },
     { id = "precision", name = "Precision", description = "Eight shots with a shorter aim guide.", shots = 8, guideSteps = 30 },
     { id = "practice", name = "Practice", description = "Eighteen shots with an extended aim guide.", shots = 18, guideSteps = 138 },
 }
@@ -155,7 +163,107 @@ local function vault(pegs)
     end
 end
 
-local layouts = { grove = grove, foundry = foundry, basin = basin, crown = crown, tide = tide, vault = vault }
+local function harbor(pegs)
+    local bows = {
+        { 324, 384, 21 }, { 268, 320, 18 }, { 207, 251, 15 }, { 146, 179, 12 }, { 84, 114, 7 },
+    }
+    for _, bow in ipairs(bows) do
+        local xRadius, yRadius, count = bow[1], bow[2], bow[3]
+        for point = 0, count - 1 do
+            local arc = 2.66 * point / (count - 1) - 1.33
+            addPeg(pegs, Game.launcherX + xRadius * math.sin(arc), 446 - yRadius * math.cos(arc))
+        end
+    end
+end
+
+local function spire(pegs)
+    local rows = {
+        "......#......",
+        ".....#.#.....",
+        "....#.#.#....",
+        "..#.#.#.#.#..",
+        ".#.#.#.#.#.#.",
+        "##.#.#.#.#.##",
+        ".##.#.#.#.##.",
+        "##.#######.##",
+        "..#########..",
+    }
+    for row, pattern in ipairs(rows) do
+        for column = 1, #pattern do
+            if pattern:sub(column, column) == "#" then
+                addPeg(pegs, Game.launcherX + (column - 7) * 48, 82 + (row - 1) * 46)
+            end
+        end
+    end
+end
+
+local function delta(pegs)
+    for row = 0, 8 do
+        local y = 92 + row * 45
+        local drift = 14 * math.sin(row * 0.75)
+        local spread = 111 + row * 23
+        for _, direction in ipairs({ -1, 1 }) do
+            local edge = Game.launcherX + direction * spread + drift
+            addPeg(pegs, edge - 21, y - 8 * direction)
+            addPeg(pegs, edge + 21, y + 4 * direction)
+        end
+        for column = -1, 1 do
+            addPeg(pegs, Game.launcherX + column * 37 - drift, y)
+        end
+    end
+end
+
+local function switchback(pegs)
+    local lanes, segments, extent, slope, laneGap = 6, 12, 309, 19, 69
+    for lane = 0, lanes - 1 do
+        local direction = lane % 2 == 0 and 1 or -1
+        local y = 103 + lane * laneGap
+        for point = 0, segments - 1 do
+            local u = point * 2 / (segments - 1) - 1
+            addPeg(pegs, Game.launcherX + extent * u, y + slope * direction * u)
+        end
+        if lane < lanes - 1 then
+            -- Bridge the wider opening between each pair of ramps.
+            addPeg(pegs, Game.launcherX - extent * direction, y + laneGap / 2)
+        end
+    end
+end
+
+local function parallax(pegs)
+    for row = 0, 8 do
+        local y = 95 + row * 45
+        local arrow = 318 - math.abs(row - 4) * 34
+        for layer = 0, 2 do
+            local x = arrow - layer * 39
+            addPeg(pegs, x, y)
+            addPeg(pegs, Game.width - x, y)
+        end
+    end
+end
+
+local function sundial(pegs)
+    local horizon = 325
+    for point = 0, 13 do
+        local arc = (point / 13 - 0.5) * math.pi
+        addPeg(pegs, Game.launcherX + 216 * math.sin(arc), horizon - 177 * math.cos(arc))
+    end
+    for ray = 0, 8 do
+        local arc = (ray / 8 - 0.5) * math.pi
+        addPeg(pegs, Game.launcherX + 251 * math.sin(arc), horizon - 219 * math.cos(arc))
+        addPeg(pegs, Game.launcherX + 294 * math.sin(arc), horizon - 261 * math.cos(arc))
+    end
+    local foundation = { 7, 9, 11, 9 }
+    for row, count in ipairs(foundation) do
+        for point = 0, count - 1 do
+            addPeg(pegs, Game.launcherX + (point - (count - 1) / 2) * 43, horizon + (row - 1) * 43)
+        end
+    end
+end
+
+local layouts = {
+    grove = grove, foundry = foundry, basin = basin, crown = crown, tide = tide, vault = vault,
+    harbor = harbor, spire = spire, delta = delta, switchback = switchback, parallax = parallax, sundial = sundial,
+}
 
 local function colorPegs(pegs, targetCount, seed)
     local order = {}
@@ -180,11 +288,17 @@ function Game.isTerminal(phase)
     return phase == "won" or phase == "lost"
 end
 
-function Game.new(boardId, seed, modeId)
+function Game.new(boardId, seed, modeId, maxAngle)
     local board = descriptor(Game.boards, boardId)
     local mode = descriptor(Game.modes, modeId)
     assert(board, "Unknown peg board")
     assert(mode, "Unknown peg board mode")
+    if maxAngle == nil then
+        maxAngle = Game.maxAngle
+    end
+    assert(finite(maxAngle) and maxAngle >= 1 / Game.angleScale and maxAngle <= Game.maxAngle,
+        "Invalid aiming limit")
+    maxAngle = math.floor(maxAngle * Game.angleScale + 1e-9) / Game.angleScale
     if not finite(seed) then
         seed = 1
     end
@@ -203,9 +317,10 @@ function Game.new(boardId, seed, modeId)
         ballRadius = Game.ballRadius,
         catcherY = Game.catcherY,
         catcherWidth = Game.catcherWidth,
+        maxAngle = maxAngle,
         boardId = board.id,
         modeId = mode.id,
-        guideSteps = mode.guideSteps,
+        guideSteps = maxAngle == Game.legacyMaxAngle and mode.id == "standard" and 72 or mode.guideSteps,
         seed = seed,
         pegs = pegs,
         initialTargets = board.targets,
@@ -228,22 +343,66 @@ function Game.new(boardId, seed, modeId)
     }, Run)
 end
 
-local function encodeAngle(angle)
-    local units = clamp(angle, -Game.maxAngle, Game.maxAngle) * Game.angleScale
+local function encodeAngle(run, angle)
+    local units = clamp(angle, -run.maxAngle, run.maxAngle) * Game.angleScale
     if units < 0 then
         return math.ceil(units - 0.5)
     end
     return math.floor(units + 0.5)
 end
 
+function Run:setAngle(angle)
+    if self.phase == "ready" and finite(angle) then
+        self.angle = encodeAngle(self, angle) / Game.angleScale
+    end
+    return self.angle
+end
+
+local function heightAt(horizontal, angle)
+    local velocity = shotSpeed * math.cos(angle)
+    local slicedTime = horizontal / (shotSpeed * math.sin(angle) * step)
+    local ticks = math.floor(slicedTime)
+    local acceleration = gravity * step
+    local accelerating = math.min(ticks, math.floor((maxBallSpeed - velocity) / acceleration))
+
+    -- Sum the same updated velocities used by advanceBall, then interpolate the crossing.
+    local height = accelerating * velocity
+        + acceleration * accelerating * (accelerating + 1) / 2
+        + (ticks - accelerating) * maxBallSpeed
+    height = height + (slicedTime - ticks) * math.min(velocity + (ticks + 1) * acceleration, maxBallSpeed)
+    return height * step
+end
+
 function Run:aim(x, y)
     if self.phase ~= "ready" or not finite(x) or not finite(y) then
         return self.angle
     end
-    local horizontal = x - self.launcherX
-    local vertical = math.max(y - self.launcherY, 0.001)
-    self.angle = encodeAngle(math.atan(horizontal / vertical)) / Game.angleScale
-    return self.angle
+    if self.maxAngle == Game.legacyMaxAngle then
+        return self:setAngle(math.atan((x - self.launcherX) / math.max(y - self.launcherY, 0.001)))
+    end
+    local dx = clamp(x, self.ballRadius, self.width - self.ballRadius) - self.launcherX
+    if math.abs(dx) < 1e-8 then
+        return self:setAngle(0)
+    end
+    local horizontal = math.abs(dx)
+    local vertical = math.max(y - self.launcherY, 0)
+    local scale = Game.angleScale
+    local lower, upper = 0, encodeAngle(self, self.maxAngle)
+    -- Before the first wall or peg contact, a shallower angle arrives higher at this x.
+    while upper - lower > 1 do
+        local middle = math.floor((lower + upper) / 2)
+        if heightAt(horizontal, middle / scale) > vertical then
+            lower = middle
+        else
+            upper = middle
+        end
+    end
+    if lower > 0 and math.abs(heightAt(horizontal, lower / scale) - vertical)
+        < math.abs(heightAt(horizontal, upper / scale) - vertical) then
+        upper = lower
+    end
+    local direction = dx < 0 and -1 or 1
+    return self:setAngle(direction * upper / scale)
 end
 
 local function newBall(angle)
@@ -264,7 +423,7 @@ function Run:launch(angle)
     elseif not finite(angle) then
         return false
     end
-    local encoded = encodeAngle(angle)
+    local encoded = encodeAngle(self, angle)
     self.angle = encoded / Game.angleScale
     self.ball = newBall(self.angle)
     self.rounds = self.rounds + 1
@@ -334,7 +493,7 @@ function Run:preview(angle)
     if self.phase ~= "ready" then
         return points
     end
-    angle = finite(angle) and encodeAngle(angle) / Game.angleScale or self.angle
+    angle = finite(angle) and encodeAngle(self, angle) / Game.angleScale or self.angle
     local ball = newBall(angle)
     for tick = 1, self.guideSteps do
         advanceBall(ball)

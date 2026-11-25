@@ -20,7 +20,27 @@ local function hasEvent(events, eventType)
     end
 end
 
-assert(#Game.boards == 6)
+local function distance(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+end
+
+local function aimAt(run, x, y, peg, shouldHit)
+    local angle = run:aim(x, y)
+    local points = run:preview()
+    if shouldHit then
+        assert(distance(points[#points], peg) < run.pegRadius + run.ballRadius, "Aim guide missed the peg")
+    end
+    assert(run:launch())
+    local hit = hasEvent(finishShot(run, 0.25), "hit")
+    if shouldHit then
+        assert(hit and hit.x == peg.x and hit.y == peg.y, "The actual shot missed the guided peg")
+    else
+        assert(not hit, "A shot aimed outside the collision radius hit the peg")
+    end
+    return angle
+end
+
+assert(#Game.boards == 12)
 for _, board in ipairs(Game.boards) do
     for _, mode in ipairs(Game.modes) do
         local run = Game.new(board.id, 827107, mode.id)
@@ -53,6 +73,44 @@ for _, board in ipairs(Game.boards) do
         assert(colors.orange == run.remaining and colors.green == 2 and colors.purple == 1)
     end
 end
+
+for _, x in ipairs({ 60, Game.width - 60 }) do
+    for _, offset in ipairs({ 0, -13, 13, -26, 26 }) do
+        local run = Game.new("grove", 100, "standard")
+        local peg = { x = x, y = 167, kind = "orange" }
+        run.pegs = { peg }
+        local angle = aimAt(run, peg.x, peg.y + offset, peg, math.abs(offset) < 20)
+        if offset == 0 then
+            assert(math.abs(angle) > 1.22 and math.abs(angle) < Game.maxAngle, "The edge peg remains out of range")
+        end
+    end
+end
+
+for _, board in ipairs(Game.boards) do
+    local pegs = Game.new(board.id, 827107, "standard").pegs
+    for _, peg in ipairs(pegs) do
+        local run = Game.new(board.id, 827107, "standard")
+        local onlyPeg = { x = peg.x, y = peg.y, kind = peg.kind }
+        run.pegs = { onlyPeg }
+        aimAt(run, peg.x, peg.y, onlyPeg, true)
+    end
+end
+
+for _, index in ipairs({ 1, 3 }) do
+    local run = Game.new("crown", 827107, "standard")
+    local peg = run.pegs[index]
+    assert(peg.y == 88 and math.abs(peg.x - run.launcherX) > 290)
+    assert(math.abs(aimAt(run, peg.x, peg.y, peg, true)) > math.pi / 2,
+        "The outermost upper peg must be reached by an upward launch")
+end
+
+local legacy = Game.new("grove", 1, "standard", Game.legacyMaxAngle)
+local legacyAim = -math.floor(math.atan(320 / 143) * Game.angleScale + 0.5) / Game.angleScale
+assert(legacy:aim(60, 167) == legacyAim and legacy.guideSteps == 72)
+assert(legacy:setAngle(-2) == -1.22)
+assert(legacy:setAngle(2) == 1.22)
+assert(legacy:launch(1.83) and legacy.angles[1] == 12200)
+assert(legacy:setAngle(0) == 1.22, "The launcher rotated during flight")
 
 local function play(dt)
     local run = Game.new("basin", 827107, "standard")
@@ -120,5 +178,36 @@ local green = firstHit("green")
 assert(green.ball.vy <= -210 and math.abs(green.ball.vx) >= 105)
 local purple = firstHit("purple")
 assert(purple.power == "resonance" and purple.charge == 3)
+finishShot(purple, 0.25)
+assert(purple.phase == "ready" and purple.charge == 0 and purple.power == nil)
+
+local function strike(run, peg)
+    assert(run.phase == "flight")
+    run.ball = { x = peg.x - 16, y = peg.y, vx = 360, vy = -525 / 120 }
+    return hasEvent(run:update(1 / 120), "hit")
+end
+
+local greenPeg = { x = 150, y = 120, kind = "green" }
+local kickoff = Game.new("grove", 1, "standard")
+kickoff.pegs = { greenPeg }
+assert(kickoff:launch())
+assert(strike(kickoff, greenPeg).points == 80)
+assert(math.abs(kickoff.ball.vx - (-378.6)) < 1e-8 and kickoff.ball.vy == -210)
+assert(not strike(kickoff, greenPeg))
+assert(math.abs(kickoff.ball.vx - (-273.6)) < 1e-8 and kickoff.ball.vy == 0, "The green boost applied twice")
+
+local chargingPeg = { x = 150, y = 160, kind = "purple" }
+local resonant = Game.new("grove", 1, "standard")
+resonant.pegs = { chargingPeg }
+assert(resonant:launch())
+assert(strike(resonant, chargingPeg).points == 240)
+assert(not strike(resonant, chargingPeg) and resonant.charge == 3, "A repeat hit consumed resonance")
+for index, expected in ipairs({ 40, 40, 80, 40 }) do
+    local bluePeg = { x = 150 + index * 50, y = 160, kind = "blue" }
+    resonant.pegs[#resonant.pegs + 1] = bluePeg
+    assert(strike(resonant, bluePeg).points == expected)
+    assert(resonant.charge == math.max(0, 3 - index))
+end
+assert(resonant.power == nil)
 
 print("Peg-board gameplay tests passed")

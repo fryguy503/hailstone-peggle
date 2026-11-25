@@ -27,6 +27,12 @@ local scenes = {
     {{0.21, 0.15, 0.095}, {0.095, 0.09, 0.12}, {0.94, 0.69, 0.36}},
     {{0.07, 0.16, 0.27}, {0.04, 0.11, 0.14}, {0.39, 0.81, 0.87}},
     {{0.16, 0.11, 0.28}, {0.07, 0.08, 0.16}, {0.70, 0.55, 0.94}},
+    {{0.23, 0.10, 0.13}, {0.06, 0.09, 0.17}, {1.00, 0.55, 0.36}},
+    {{0.09, 0.18, 0.24}, {0.04, 0.08, 0.17}, {0.68, 0.86, 1.00}},
+    {{0.21, 0.17, 0.10}, {0.045, 0.15, 0.14}, {0.90, 0.79, 0.39}},
+    {{0.18, 0.12, 0.13}, {0.06, 0.08, 0.12}, {0.91, 0.49, 0.45}},
+    {{0.19, 0.10, 0.25}, {0.09, 0.07, 0.19}, {0.86, 0.57, 0.98}},
+    {{0.23, 0.16, 0.09}, {0.11, 0.08, 0.14}, {1.00, 0.73, 0.39}},
 }
 
 local function formatScore(n)
@@ -173,7 +179,7 @@ local function sceneDetail(c, x, y, w, h, tint, index)
                 lastX, lastY = px, py
             end
         end
-    else
+    elseif index == 6 then
         for crystal = 0, 6 do
             local sx, floor = x+67+crystal*104, y+h-39
             local peak = floor-159-(crystal*67 % 153)
@@ -182,6 +188,62 @@ local function sceneDetail(c, x, y, w, h, tint, index)
             c.line(sx-10, peak, sx+29, floor, tint, 0.16)
             c.line(sx-10, peak, sx-1, floor, tint, 0.13)
         end
+    elseif index == 7 then
+        local pier = y+h-96
+        c.line(x+38, pier, x+w-38, pier, tint, 0.27, 2)
+        for sail = 0, 4 do
+            local mastX = x+75+sail*146
+            local top = pier-164-(sail % 2)*58
+            c.triangle(mastX, top, mastX, pier-21, mastX+92, pier-21, tint, 0.09)
+            c.line(mastX, top, mastX, pier, tint, 0.24)
+            c.line(mastX, top, mastX+92, pier-21, tint, 0.17)
+        end
+    elseif index == 8 then
+        for pane = 0, 4 do
+            local center, foot = x+w*0.5, y+h-62
+            local height, inset = 356-pane*44, 186-pane*28
+            c.triangle(center, foot-height, center-inset, foot, center+inset, foot, tint, 0.045)
+            c.line(center, foot-height, center-inset, foot, tint, 0.16, 2)
+            c.line(center, foot-height, center+inset, foot, tint, 0.16, 2)
+        end
+    elseif index == 9 then
+        local center = x+w/2
+        for channel = -3, 3 do
+            local root, bend, mouth = center+channel*15, center+channel*72, center+channel*116
+            c.line(root, y+122, bend, y+271, tint, 0.14, 2)
+            c.line(bend, y+271, mouth, y+h-45, tint, 0.20, 2)
+            c.line(bend+14, y+271, mouth+29, y+h-45, tint, 0.09)
+        end
+    elseif index == 10 then
+        for ramp = 0, 5 do
+            local py = y+99+ramp*68
+            local west, east = x+58, x+w-58
+            local top, bottom = py, py+32
+            if ramp % 2 == 1 then top, bottom = bottom, top end
+            c.line(west, top, east, bottom, tint, 0.18, 2)
+            c.line(west, top+9, east, bottom+9, tint, 0.08)
+            for pin = 0, 8 do
+                c.dot(west+pin*(east-west)/8, top+pin*(bottom-top)/8, 2.5, tint, 0.24)
+            end
+        end
+    elseif index == 11 then
+        for chevron = -3, 3 do
+            local anchor = x+w*0.5+chevron*100
+            local offset = chevron < 0 and 107 or -107
+            c.line(anchor, y+116, anchor+offset, y+259, tint, 0.18, 2)
+            c.line(anchor+offset, y+259, anchor, y+402, tint, 0.18, 2)
+            c.dot(anchor+offset, y+259, 4, tint, 0.20)
+        end
+    else
+        local center, horizon = x+w/2, y+h-69
+        for i = 1, 12 do
+            local angle = math.pi*(i-0.5)/12
+            local vx, vy = math.cos(angle), math.sin(angle)
+            c.line(center+vx*112, horizon-vy*112, center+vx*282, horizon-vy*282, tint, 0.19, 2)
+            c.dot(center+vx*297, horizon-vy*297, 3, tint, 0.28)
+        end
+        c.ring(center, horizon, 85, tint, 0.17, 2)
+        c.line(x+28, horizon, x+w-28, horizon, tint, 0.22, 2)
     end
 end
 
@@ -247,10 +309,12 @@ local function gem(c, x, y, radius, kind, hit)
     end
 end
 
-local function marble(c, x, y, radius)
-    c.dot(x, y, radius+5, color.gold, 0.16)
-    c.dot(x, y, radius+1.5, color.goldDeep)
-    c.dot(x, y-0.5, radius, color.gold)
+local function marble(c, x, y, radius, resonance)
+    local light = resonance and gems.purple[2] or color.gold
+    local rim = resonance and gems.purple[1] or color.goldDeep
+    c.dot(x, y, radius+5, light, 0.16)
+    c.dot(x, y, radius+1.5, rim)
+    c.dot(x, y-0.5, radius, light)
     c.dot(x-1.5, y-1.8, radius*0.56, color.white, 0.91)
     c.dot(x-2.2, y-2.4, radius*0.23, color.white)
 end
@@ -271,6 +335,9 @@ local function accents(c, effects, now)
         if fx.points and fx.kind ~= 'blue' then
             c.label(x+9, y-22-progress*22, '+'..formatScore(fx.points), 15, tint, opacity)
         end
+        if fx.kind == 'green' then
+            c.label(x+9, y-40-progress*22, 'BOOST', 14, tint, opacity)
+        end
     end
 end
 
@@ -278,11 +345,10 @@ local function field(c, ui, state, index, now)
     local run = state.run
     local px, py = BOARD_X, BOARD_Y
     local scene = scenes[(index-1)%#scenes+1]
-    c.position(px, py)
-    local clicked = ui.InvisibleButton('##playfield', run.width*c.scale, run.height*c.scale)
-    local hover = ui.IsItemHovered() or ui.IsItemActive()
-    local keys = ui.Key
     if run.phase == 'ready' then
+        c.position(px, py)
+        local clicked = ui.InvisibleButton('##playfield', run.width*c.scale, run.height*c.scale)
+        local hover = ui.IsItemHovered() or ui.IsItemActive()
         local mx, my = ui.GetMousePos()
         local ax, ay = (mx-c.x)/c.scale-px, (my-c.y)/c.scale-py
         local onField = hover and ax >= 0 and ax <= run.width and ay >= 0 and ay <= run.height
@@ -292,10 +358,11 @@ local function field(c, ui, state, index, now)
         local fired = false
         if ui.IsWindowFocused() and not ui.GetIO().typing then
             ui.CaptureKeyboard()
+            local keys = ui.Key
             local left, right = ui.IsKeyDown(keys.LeftArrow), ui.IsKeyDown(keys.RightArrow)
             if left or right then
-                local angle = run.angle + ((right and 1 or 0)-(left and 1 or 0))*state.dt*1.22
-                run:aim(run.launcherX+math.sin(angle)*100, run.launcherY+math.cos(angle)*100)
+                local direction = (right and 1 or 0)-(left and 1 or 0)
+                run:setAngle(run.angle+direction*state.dt*1.22)
             end
             fired = ui.IsKeyPressed(keys.Space)
         end
@@ -343,10 +410,12 @@ local function field(c, ui, state, index, now)
     end
 
     if run.ball then
+        local resonance = run.charge > 0
+        local tint = resonance and gems.purple[2] or color.gold
         for i, point in ipairs(state.trail) do
-            c.dot(px+point.x, py+point.y, 2+i/#state.trail*3.8, color.gold, i/#state.trail*0.26)
+            c.dot(px+point.x, py+point.y, 2+i/#state.trail*3.8, tint, i/#state.trail*0.26)
         end
-        marble(c, px+run.ball.x, py+run.ball.y, run.ballRadius)
+        marble(c, px+run.ball.x, py+run.ball.y, run.ballRadius, resonance)
     end
     accents(c, state.effects, now)
     ui.PopClipRect()
@@ -369,7 +438,8 @@ local function sidebar(c, state, board, mode)
     local x = 802
     panel(c, x, 118, 278, 550)
     c.label(x+19, 136, board.name, 25)
-    c.label(x+20, 169, mode.name .. (state.challenge and ' / Duel' or ''), 15, color.gold)
+    local rules = run.maxAngle < state.Game.maxAngle and ' / Classic aim' or ''
+    c.label(x+20, 169, mode.name..(state.challenge and ' / Duel' or '')..rules, 15, color.gold)
     local busy = run.phase == 'flight'
     if c.button('prevBoard', '< Board', x+18, 196, 111, 31, false, busy) then state:pickBoard(-1) end
     if c.button('nextBoard', 'Board >', x+137, 196, 121, 31, false, busy) then state:pickBoard(1) end
@@ -396,16 +466,29 @@ local function sidebar(c, state, board, mode)
     c.label(x+19, 586, 'x'..tostring(run.combo or 0), 27)
     c.label(x+138, 568, 'SHOT POINTS', 13, color.muted)
     c.label(x+138, 589, formatScore(run.phase == 'flight' and run.shotScore or run.lastShot), 22)
-    if state.notice and state.now < state.noticeUntil then c.label(x+19, 633, state.notice, 15, color.green) end
+    local status, tint
+    if run.charge > 0 then
+        status = 'Resonance x2  /  '..run.charge..' left'
+        tint = gems.purple[2]
+    elseif state.notice and state.now < state.noticeUntil then
+        status, tint = state.notice, color[state.noticeTone]
+    end
+    if status then
+        c.rect(x+18, 621, x+260, 651, tint, 0.13, 5)
+        c.dot(x+29, 636, 3, tint)
+        c.label(x+39, 628, status, 15, tint)
+    end
 end
 
 local function play(c, ui, state, now)
-    local index, board = at(state.Game.boards, state.run.boardId)
-    local _, mode = at(state.Game.modes, state.run.modeId)
+    local index = at(state.Game.boards, state.run.boardId)
     field(c, ui, state, index, now)
+    local order, board = at(state.Game.boards, state.run.boardId)
+    local _, mode = at(state.Game.modes, state.run.modeId)
     sidebar(c, state, board, mode)
     c.label(20, 691, 'Aim with the mouse and click to launch', 17)
     c.label(20, 715, 'Keyboard: Left / Right to aim, Space to launch', 14, color.muted)
+    c.label(628, 691, 'Board '..order..' of '..#state.Game.boards, 15, color.muted)
     c.label(802, 691, 'Catch a marble to earn a shot.', 16, color.gold)
 end
 
@@ -421,7 +504,7 @@ local function help(c, state)
         {'orange', 'Amber', 'Clear these to finish the board.'},
         {'blue', 'Blue', 'Chain rebounds off these for points.'},
         {'green', 'Green', 'Boosts the rebound off this peg.'},
-        {'purple', 'Violet', 'Doubles your next three hits.'},
+        {'purple', 'Violet', 'Doubles up to three new hits this shot.'},
     }
     for i, entry in ipairs(legend) do
         local x = 50+(i-1)*250
@@ -440,32 +523,83 @@ local function help(c, state)
     c.label(50, 646, 'Use /peggle to open or close the cabinet.', 16, color.muted)
 end
 
-local function records(c, state)
-    panel(c, 20, 118, 1060, 580)
-    c.label(49, 145, 'Local records', 34)
-    c.label(50, 199, 'Best completed run for each board and mode.', 17, color.muted)
-    c.label(51, 265, 'BOARD', 14, color.muted)
-    for i, mode in ipairs(state.Game.modes) do c.label(392+(i-1)*222, 261, mode.name, 18, color.gold) end
-    for row, board in ipairs(state.Game.boards) do
-        local y = 291+(row-1)*46
-        c.rect(48, y, 1052, y+42, row % 2 == 0 and color.inset or color.panel, 0.82, 5)
-        c.label(61, y+9, board.name, 19)
-        for col, mode in ipairs(state.Game.modes) do
-            local entry = state:record(board.id, mode.id)
-            local value = entry.score and formatScore(entry.score) or '-'
-            if entry.cleared then value = value..'  /  Clear' end
-            c.label(392+(col-1)*222, y+10, value, 17, entry.cleared and color.green or color.text)
-        end
-    end
-    c.label(50, 644, 'Best combo  x'..tostring(state.profile.bestCombo), 17, color.gold)
-    c.label(300, 644, 'Runs finished  '..tostring(state.profile.runs), 17, color.muted)
-end
-
 local function input(c, ui, id, value, x, y, w, limit, readOnly)
     c.position(x, y)
     ui.SetNextItemWidth(w*c.scale)
     local flags = readOnly and (ui.InputTextFlags.ReadOnly + ui.InputTextFlags.AutoSelectAll) or 0
     return ui.InputText('##'..id, value, limit, flags)
+end
+
+local function scoreShare(c, ui, state)
+    if not state.shareRecord then
+        c.label(50, 600, 'Select a score to link it in chat.', 16, color.muted)
+        return
+    end
+
+    local channels = state.ScoreChat.channels
+    local _, channel = at(channels, state.shareChannel)
+    c.rect(48, 577, 1048, 631, color.inset, 1, 7)
+    input(c, ui, 'scoreMessage', state.shareMessage, 60, 590, 482, 193, true)
+    c.position(567, 590)
+    ui.SetNextItemWidth(135*c.scale)
+    if ui.BeginCombo('##scoreChannel', channel.label) then
+        for _, option in ipairs(channels) do
+            if ui.Selectable(option.label, option.id == channel.id) then state.shareChannel = option.id end
+        end
+        ui.EndCombo()
+    end
+    if c.button('shareScore', 'Link score', 726, 586, 123, 32, true) then state:sendScore() end
+    if state.shareStatus then
+        c.label(863, 593, state.shareStatus, 14, state.shareIssue and color.red or color.green)
+    else
+        c.label(863, 593, 'Click text to copy', 14, color.muted)
+    end
+end
+
+local function records(c, ui, state)
+    panel(c, 20, 118, 1060, 580)
+    c.label(49, 145, 'Local records', 34)
+    c.label(50, 199, 'Best completed run for each board and mode.', 17, color.muted)
+    c.line(550, 253, 550, 602, color.edge)
+    local boards, modes = state.Game.boards, state.Game.modes
+    local rows = math.ceil(#boards/2)
+    for side = 0, 1 do
+        local x = 48+side*514
+        c.label(x+9, 265, 'BOARD', 14, color.muted)
+        for col, mode in ipairs(modes) do
+            c.label(x+167+(col-1)*108, 262, mode.name, 17, color.gold)
+        end
+        for row = 1, rows do
+            local board = boards[side*rows+row]
+            if not board then break end
+            local y = 291+(row-1)*46
+            c.rect(x, y, x+486, y+41, row % 2 == 0 and color.inset or color.panel, 0.82, 5)
+            c.label(x+11, y+9, board.name, 18)
+            for col, mode in ipairs(modes) do
+                local entry = state:record(board.id, mode.id)
+                local scoreX = x+167+(col-1)*108
+                local value = entry.score and formatScore(entry.score) or '-'
+                if entry.score then
+                    c.position(scoreX-14, y+3)
+                    if ui.InvisibleButton('##record_'..board.id..'_'..mode.id, 98*c.scale, 34*c.scale,
+                        ui.ButtonFlags.EnableNav) then
+                        state:selectScore(board, mode, entry.score)
+                    end
+                    local selected = state.shareBoardId == board.id and state.shareModeId == mode.id
+                    if selected or ui.IsItemHovered() or ui.IsItemFocused() then
+                        c.rect(scoreX-14, y+3, scoreX+84, y+37, color.gold, selected and 0.18 or 0.095, 4)
+                    end
+                end
+                if entry.cleared then c.dot(scoreX-9, y+19, 3, color.green) end
+                c.label(scoreX, y+10, value, 17, entry.cleared and color.green or color.text)
+            end
+        end
+    end
+    scoreShare(c, ui, state)
+    c.label(50, 644, 'Best combo  x'..tostring(state.profile.bestCombo), 17, color.gold)
+    c.label(300, 644, 'Runs finished  '..tostring(state.profile.runs), 17, color.muted)
+    c.dot(575, 652, 3, color.green)
+    c.label(585, 644, 'Board cleared', 17, color.muted)
 end
 
 local function duelPage(c, ui, state)
@@ -514,19 +648,21 @@ local function duelPage(c, ui, state)
     if state.offer then
         local _, board = at(state.Game.boards, state.offer.boardId)
         local _, mode = at(state.Game.modes, state.offer.modeId)
-        c.label(580, 424, board.name..'  /  '..mode.name, 19)
+        local rules = state.offer.maxAngle < state.Game.maxAngle and '  /  Classic aim' or ''
+        c.label(580, 424, board.name..'  /  '..mode.name..rules, 19)
     end
     if duel.verifying then
         c.label(580, 471, 'Replaying the submitted shots...', 17, color.gold)
     elseif duel.verified then
         local other = duel.verified
         c.label(580, 471, 'Friend score  '..formatScore(other.score), 21, color.green)
-        if finished and run.boardId == other.boardId and run.seed == other.seed and run.modeId == other.modeId then
+        if finished and run.boardId == other.boardId and run.seed == other.seed and
+            run.modeId == other.modeId and run.maxAngle == other.maxAngle then
             local verdict = run.score == other.score and 'Tie' or (run.score > other.score and 'You win' or 'Friend wins')
             c.label(580, 509, 'Your score  '..formatScore(run.score)..'  /  '..verdict, 21)
         else
             if c.button('matchBoard', 'Play this seed', 580, 510, 150, 32, false, run.phase == 'flight') then
-                state:beginChallenge(other.boardId, other.seed, other.modeId)
+                state:beginChallenge(other.boardId, other.seed, other.modeId, other.maxAngle)
             end
         end
     end
@@ -564,7 +700,7 @@ function Cabinet.draw(ui, state, now)
         header(c, state)
         if state.page == 'play' then play(c, ui, state, now)
         elseif state.page == 'duel' then duelPage(c, ui, state)
-        elseif state.page == 'records' then records(c, state)
+        elseif state.page == 'records' then records(c, ui, state)
         else help(c, state) end
         c.position(0, HEIGHT-1)
         ui.Dummy(WIDTH*scale, scale)

@@ -4,6 +4,7 @@ local ui = require('ImGui')
 local Game = require('game')
 local Duel = require('duel')
 local Cabinet = require('cabinet')
+local ScoreChat = require('score_chat')
 
 local profilePath = mq.configDir..'/pegworks.lua'
 
@@ -47,13 +48,13 @@ local function freshSeed()
 end
 
 local state = {
-    Game=Game, duel=Duel.new(Game, mq), profile=loadProfile(), page='play',
+    Game=Game, ScoreChat=ScoreChat, duel=Duel.new(Game, mq), profile=loadProfile(), page='play',
     open=(...) == 'open', peer='', inCode='', outCode='', effects={}, trail={},
-    now=0, dt=0, noticeUntil=0, trailTime=0,
+    now=0, dt=0, noticeUntil=0, trailTime=0, shareChannel=ScoreChat.channels[1].id,
 }
 
-function state:start(boardId, seed, modeId, challenge)
-    self.run = assert(Game.new(boardId, seed, modeId))
+function state:start(boardId, seed, modeId, challenge, maxAngle)
+    self.run = assert(Game.new(boardId, seed, modeId, maxAngle))
     self.challenge = challenge
     self.trail, self.effects = {}, {}
     self.notice, self.guideAngle, self.mouseX, self.mouseY = nil, nil, nil, nil
@@ -65,9 +66,22 @@ function state:record(boardId, modeId)
     return self.profile.records[key] or {}
 end
 
+function state:selectScore(board, mode, score)
+    local record = {boardName=board.name, modeName=mode.name, score=score}
+    local message = ScoreChat.format(record)
+    if not message then return end
+    self.shareRecord, self.shareMessage = record, message
+    self.shareBoardId, self.shareModeId = board.id, mode.id
+    self.shareStatus = nil
+end
+
+function state:sendScore()
+    self.pendingScore = {channel=self.shareChannel, record=self.shareRecord}
+end
+
 function state:restart()
     local run = self.run
-    self:start(run.boardId, run.seed, run.modeId, self.challenge)
+    self:start(run.boardId, run.seed, run.modeId, self.challenge, run.maxAngle)
 end
 
 function state:pickBoard(delta)
@@ -95,8 +109,8 @@ function state:status(message, issue)
     self.duelStatus, self.duelIssue = message, issue
 end
 
-function state:beginChallenge(boardId, seed, modeId, stay)
-    self:start(boardId, seed, modeId, true)
+function state:beginChallenge(boardId, seed, modeId, maxAngle, stay)
+    self:start(boardId, seed, modeId, true, maxAngle)
     if not stay then self.page = 'play' end
 end
 
@@ -104,7 +118,7 @@ function state:createChallenge()
     local run, seed = self.run, freshSeed()
     local code, errorText = Duel.challenge(run.boardId, seed, run.modeId)
     if not code then return self:status(errorText, true) end
-    self:beginChallenge(run.boardId, seed, run.modeId, true)
+    self:beginChallenge(run.boardId, seed, run.modeId, Game.maxAngle, true)
     self.outCode = code
     self:status('Challenge ready. Share the code, then open Play.')
 end
@@ -133,7 +147,7 @@ end
 function state:acceptChallenge()
     local offer = self.offer
     if not offer then return end
-    self:beginChallenge(offer.boardId, offer.seed, offer.modeId)
+    self:beginChallenge(offer.boardId, offer.seed, offer.modeId, offer.maxAngle)
     self.offer = nil
 end
 
@@ -163,6 +177,17 @@ local function serviceDuels()
     duel:tick()
 end
 
+local function serviceScoreChat()
+    local pending = state.pendingScore
+    if not pending then return end
+    state.pendingScore = nil
+    local ok = ScoreChat.send(mq, pending.channel, pending.record)
+    if pending.record == state.shareRecord then
+        state.shareStatus = ok and 'Submitted to chat' or 'Copy text to share'
+        state.shareIssue = not ok
+    end
+end
+
 local function rememberResult(run)
     local profile = state.profile
     local record = state:record()
@@ -174,6 +199,7 @@ local function rememberResult(run)
     local ok, result = pcall(mq.pickle, profilePath, profile)
     if not ok or result == false then
         state.notice, state.noticeUntil = 'Records could not be saved', state.now+4
+        state.noticeTone = 'red'
     end
 end
 
@@ -185,10 +211,10 @@ local function updateRun(dt, now)
             state.effects[#state.effects+1] = {x=event.x, y=event.y, kind=event.kind, points=event.points, time=now}
             if event.type == 'catch' then
                 state.notice, state.noticeUntil = 'Catch!  +1 shot', now+1.85
-            elseif event.kind == 'purple' then
-                state.notice, state.noticeUntil = 'Resonance  /  x2 points', now+2.1
+                state.noticeTone = 'gold'
             elseif event.kind == 'green' then
-                state.notice, state.noticeUntil = 'Boosted rebound', now+1.6
+                state.notice, state.noticeUntil = 'Ricochet boost', now+2.1
+                state.noticeTone = 'green'
             end
         elseif event.type == 'finish' then
             rememberResult(run)
@@ -231,5 +257,6 @@ while true do
     last = now
     updateRun(state.dt, now)
     serviceDuels()
+    serviceScoreChat()
     mq.delay(10)
 end
