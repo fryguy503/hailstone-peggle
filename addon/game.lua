@@ -7,6 +7,7 @@ local Game = {
     ballRadius = 6,
     catcherWidth = 116,
     catcherY = 516,
+    catcherCycleTicks = 432,
     maxSeed = 2147483646,
     legacyMaxAngle = 1.22,
     -- Clear upward launches stay below the ceiling at this angle.
@@ -41,6 +42,8 @@ Run.__index = Run
 
 local ticksPerSecond = 120
 local step = 1 / ticksPerSecond
+local catcherCycleSeconds = Game.catcherCycleTicks * step
+local catcherBlendSeconds = 0.05
 local gravity = 525
 local shotSpeed = 515
 local maxBallSpeed = 820
@@ -288,7 +291,7 @@ function Game.isTerminal(phase)
     return phase == "won" or phase == "lost"
 end
 
-function Game.new(boardId, seed, modeId, maxAngle)
+function Game.new(boardId, seed, modeId, maxAngle, timedCatcher)
     local board = descriptor(Game.boards, boardId)
     local mode = descriptor(Game.modes, modeId)
     assert(board, "Unknown peg board")
@@ -299,6 +302,10 @@ function Game.new(boardId, seed, modeId, maxAngle)
     assert(finite(maxAngle) and maxAngle >= 1 / Game.angleScale and maxAngle <= Game.maxAngle,
         "Invalid aiming limit")
     maxAngle = math.floor(maxAngle * Game.angleScale + 1e-9) / Game.angleScale
+    if timedCatcher == nil then
+        timedCatcher = maxAngle ~= Game.legacyMaxAngle
+    end
+    assert(type(timedCatcher) == "boolean", "Invalid catcher rules")
     if not finite(seed) then
         seed = 1
     end
@@ -318,6 +325,10 @@ function Game.new(boardId, seed, modeId, maxAngle)
         catcherY = Game.catcherY,
         catcherWidth = Game.catcherWidth,
         maxAngle = maxAngle,
+        timedCatcher = timedCatcher,
+        catcherClock = seed % Game.catcherCycleTicks,
+        catcherOffset = 0,
+        catcherBlend = 0,
         boardId = board.id,
         modeId = mode.id,
         guideSteps = maxAngle == Game.legacyMaxAngle and mode.id == "standard" and 72 or mode.guideSteps,
@@ -336,6 +347,7 @@ function Game.new(boardId, seed, modeId, maxAngle)
         charge = 0,
         angle = 0,
         angles = {},
+        launchCatcherTicks = {},
         phase = "ready",
         events = {},
         ticks = 0,
@@ -414,7 +426,7 @@ local function newBall(angle)
     }
 end
 
-function Run:launch(angle)
+function Run:launch(angle, catcherTick)
     if self.phase ~= "ready" or self.shots <= 0 then
         return false
     end
@@ -423,11 +435,29 @@ function Run:launch(angle)
     elseif not finite(angle) then
         return false
     end
+    if catcherTick ~= nil and (not self.timedCatcher or not finite(catcherTick) or catcherTick % 1 ~= 0
+        or catcherTick < 0 or catcherTick >= Game.catcherCycleTicks) then
+        return false
+    end
     local encoded = encodeAngle(self, angle)
     self.angle = encoded / Game.angleScale
     self.ball = newBall(self.angle)
     self.rounds = self.rounds + 1
     self.angles[self.rounds] = encoded
+    if self.timedCatcher then
+        if catcherTick == nil then
+            local rounded = math.floor(self.catcherClock + 0.5)
+            catcherTick = rounded % Game.catcherCycleTicks
+            -- Absorb the half-tick quantization while keeping the first drawn position unchanged.
+            self.catcherOffset = self.catcherClock - rounded
+            self.catcherBlend = catcherBlendSeconds
+        else
+            self.catcherOffset = 0
+            self.catcherBlend = 0
+        end
+        self.catcherClock = catcherTick
+        self.launchCatcherTicks[self.rounds] = catcherTick
+    end
     self.shots = self.shots - 1
     self.ticks = 0
     self.accumulator = 0
@@ -440,17 +470,26 @@ function Run:launch(angle)
     return true
 end
 
-local function catcherX(run, round, time)
+local function legacyCatcherX(run, round, time)
     local amplitude = (run.width - run.catcherWidth) / 2 - 13
     local phase = (run.seed % 1109) * 0.011 + round * 1.97
     return run.width / 2 + amplitude * math.sin(phase + time * 1.74)
 end
 
+local function timedCatcherX(run, tick)
+    local amplitude = (run.width - run.catcherWidth) / 2 - 13
+    return run.width / 2 + amplitude * math.sin((tick % Game.catcherCycleTicks) * 2 * math.pi / Game.catcherCycleTicks)
+end
+
 function Run:catcher()
-    if self.phase == "flight" then
-        return catcherX(self, self.rounds, self.ticks * step)
+    if self.timedCatcher then
+        local offset = self.catcherOffset * self.catcherBlend / catcherBlendSeconds
+        return timedCatcherX(self, self.catcherClock + offset)
     end
-    return catcherX(self, self.rounds + 1, 0)
+    if self.phase == "flight" then
+        return legacyCatcherX(self, self.rounds, self.ticks * step)
+    end
+    return legacyCatcherX(self, self.rounds + 1, 0)
 end
 
 local function advanceBall(ball)
@@ -609,7 +648,13 @@ local function simulate(run)
     if previousY < rim and ball.y >= rim then
         local crossing = (rim - previousY) / (ball.y - previousY)
         local x = previousX + (ball.x - previousX) * crossing
-        local center = catcherX(run, run.rounds, (run.ticks - 1 + crossing) * step)
+        local crossingTick = run.ticks - 1 + crossing
+        local center
+        if run.timedCatcher then
+            center = timedCatcherX(run, run.launchCatcherTicks[run.rounds] + crossingTick)
+        else
+            center = legacyCatcherX(run, run.rounds, crossingTick * step)
+        end
         if math.abs(x - center) <= run.catcherWidth / 2 then
             run.shots = run.shots + 1
             run.catches = run.catches + 1
@@ -624,11 +669,20 @@ local function simulate(run)
 end
 
 function Run:update(dt)
-    if self.phase == "flight" and finite(dt) and dt > 0 then
-        self.accumulator = self.accumulator + math.min(dt, 0.25)
-        while self.phase == "flight" and self.accumulator + 1e-10 >= step do
-            self.accumulator = self.accumulator - step
-            simulate(self)
+    if finite(dt) and dt > 0 then
+        local flight = self.phase == "flight"
+        local elapsed = flight and math.min(dt, 0.25) or dt
+        if self.timedCatcher then
+            local advance = (elapsed % catcherCycleSeconds) * ticksPerSecond
+            self.catcherClock = (self.catcherClock + advance) % Game.catcherCycleTicks
+            self.catcherBlend = math.max(0, self.catcherBlend - elapsed)
+        end
+        if flight then
+            self.accumulator = self.accumulator + elapsed
+            while self.phase == "flight" and self.accumulator + 1e-10 >= step do
+                self.accumulator = self.accumulator - step
+                simulate(self)
+            end
         end
     end
     local events = self.events

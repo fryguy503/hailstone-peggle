@@ -489,7 +489,8 @@ local function play(c, ui, state, now)
     c.label(20, 691, 'Aim with the mouse and click to launch', 17)
     c.label(20, 715, 'Keyboard: Left / Right to aim, Space to launch', 14, color.muted)
     c.label(628, 691, 'Board '..order..' of '..#state.Game.boards, 15, color.muted)
-    c.label(802, 691, 'Catch a marble to earn a shot.', 16, color.gold)
+    local catchTip = state.run.timedCatcher and 'Time your shot for the catch tray.' or 'Tray starts moving on launch.'
+    c.label(802, 691, catchTip, 16, color.gold)
 end
 
 local function help(c, state)
@@ -514,7 +515,7 @@ local function help(c, state)
     end
     c.line(50, 411, 1049, 411, color.edge)
     c.label(50, 437, 'Catch tray', 23, color.gold)
-    c.label(50, 473, 'Land in the moving tray at the bottom to get that shot back.', 17, color.muted)
+    c.label(50, 473, 'The tray sweeps while you aim. Time your launch to land in it and get that shot back.', 17, color.muted)
     c.label(50, 509, 'Modes', 23, color.gold)
     for i, mode in ipairs(state.Game.modes) do
         c.label(50+(i-1)*330, 545, mode.name..'  /  '..mode.shots..' shots', 18)
@@ -650,6 +651,9 @@ local function duelPage(c, ui, state)
         local _, mode = at(state.Game.modes, state.offer.modeId)
         local rules = state.offer.maxAngle < state.Game.maxAngle and '  /  Classic aim' or ''
         c.label(580, 424, board.name..'  /  '..mode.name..rules, 19)
+        if not state.offer.timedCatcher then
+            c.label(580, 448, 'Catch tray starts moving on launch.', 14, color.muted)
+        end
     end
     if duel.verifying then
         c.label(580, 471, 'Replaying the submitted shots...', 17, color.gold)
@@ -657,12 +661,12 @@ local function duelPage(c, ui, state)
         local other = duel.verified
         c.label(580, 471, 'Friend score  '..formatScore(other.score), 21, color.green)
         if finished and run.boardId == other.boardId and run.seed == other.seed and
-            run.modeId == other.modeId and run.maxAngle == other.maxAngle then
+            run.modeId == other.modeId and run.maxAngle == other.maxAngle and run.timedCatcher == other.timedCatcher then
             local verdict = run.score == other.score and 'Tie' or (run.score > other.score and 'You win' or 'Friend wins')
             c.label(580, 509, 'Your score  '..formatScore(run.score)..'  /  '..verdict, 21)
         else
             if c.button('matchBoard', 'Play this seed', 580, 510, 150, 32, false, run.phase == 'flight') then
-                state:beginChallenge(other.boardId, other.seed, other.modeId, other.maxAngle)
+                state:beginChallenge(other.boardId, other.seed, other.modeId, other.maxAngle, other.timedCatcher)
             end
         end
     end

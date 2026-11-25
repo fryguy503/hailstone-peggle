@@ -1,6 +1,6 @@
 # Peggle for Hailstone
 
-Peggle is a peg-board arcade game for Hailstone. Aim a marble, chain rebounds, and clear the amber targets before you run out of shots. The moving tray gives back any shot it catches.
+Peggle is a peg-board arcade game for Hailstone. Aim a marble, chain rebounds, and clear the amber targets before you run out of shots. The catch tray sweeps while you aim, so you can time the launch to earn your shot back.
 
 Play 12 original boards in Standard, Precision, or Practice mode. Green pegs boost the rebound off that peg. Violet pegs double up to three new hits in the same shot, and the cabinet shows how many boosted hits remain. Each board and mode has a local record, and completed runs track your best combo.
 
@@ -24,9 +24,9 @@ Open **Records** and select a saved score. Choose Group, Guild, Raid, or Say, th
 
 Open **Friend duels** and choose **Create challenge**. Send the generated code to a friend. They paste it in **Join or compare**, choose **Read code**, and choose **Play challenge**. You can then each play the same board, seed, and mode at your own pace.
 
-Once your run ends, choose **Get result code** and send it back. Importing a result replays the submitted aim angles and checks the final score against your run of that same challenge. Higher score wins.
+Once your run ends, choose **Get result code** and send it back. Importing a result replays the aim angles and catcher position at each launch, then checks the final score against your run of that challenge. Higher score wins.
 
-Both players need 1.0.2 or newer for new challenges. Codes from older releases still open with the original aim rules.
+Both players need 1.0.3 or newer for new challenges. Codes from older releases still use their original aim and catcher timing.
 
 Copy codes from the share field and paste them into any chat. To send from the cabinet, enter your friend's character name and select **Send tell**. To receive codes there, enable **Tells on** for that session. The receiver chooses which code to open. The duel runs locally and scores are for friendly play.
 
@@ -38,7 +38,7 @@ From this repository, with Lua and Python installed and a Hailstone checkout ava
 lua tests/game_test.lua
 lua tests/duel_test.lua
 lua tests/score_chat_test.lua
-python tools/package.py --hailstone ../hailstone-client --version 1.0.2
+python tools/package.py --hailstone ../hailstone-client --version 1.0.3
 ```
 
 The package command stages the runtime Lua files and license, then runs Hailstone's packager. Upload `dist/hailstone-addon.txt` and the ZIP it names to the same GitHub release. Hailstone picks up a regular published release when players install by repository name.

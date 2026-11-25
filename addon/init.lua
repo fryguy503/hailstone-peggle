@@ -53,8 +53,8 @@ local state = {
     now=0, dt=0, noticeUntil=0, trailTime=0, shareChannel=ScoreChat.channels[1].id,
 }
 
-function state:start(boardId, seed, modeId, challenge, maxAngle)
-    self.run = assert(Game.new(boardId, seed, modeId, maxAngle))
+function state:start(boardId, seed, modeId, challenge, maxAngle, timedCatcher)
+    self.run = assert(Game.new(boardId, seed, modeId, maxAngle, timedCatcher))
     self.challenge = challenge
     self.trail, self.effects = {}, {}
     self.notice, self.guideAngle, self.mouseX, self.mouseY = nil, nil, nil, nil
@@ -81,7 +81,7 @@ end
 
 function state:restart()
     local run = self.run
-    self:start(run.boardId, run.seed, run.modeId, self.challenge, run.maxAngle)
+    self:start(run.boardId, run.seed, run.modeId, self.challenge, run.maxAngle, run.timedCatcher)
 end
 
 function state:pickBoard(delta)
@@ -109,8 +109,8 @@ function state:status(message, issue)
     self.duelStatus, self.duelIssue = message, issue
 end
 
-function state:beginChallenge(boardId, seed, modeId, maxAngle, stay)
-    self:start(boardId, seed, modeId, true, maxAngle)
+function state:beginChallenge(boardId, seed, modeId, maxAngle, timedCatcher, stay)
+    self:start(boardId, seed, modeId, true, maxAngle, timedCatcher)
     if not stay then self.page = 'play' end
 end
 
@@ -118,7 +118,7 @@ function state:createChallenge()
     local run, seed = self.run, freshSeed()
     local code, errorText = Duel.challenge(run.boardId, seed, run.modeId)
     if not code then return self:status(errorText, true) end
-    self:beginChallenge(run.boardId, seed, run.modeId, Game.maxAngle, true)
+    self:beginChallenge(run.boardId, seed, run.modeId, Game.maxAngle, true, true)
     self.outCode = code
     self:status('Challenge ready. Share the code, then open Play.')
 end
@@ -147,7 +147,7 @@ end
 function state:acceptChallenge()
     local offer = self.offer
     if not offer then return end
-    self:beginChallenge(offer.boardId, offer.seed, offer.modeId, offer.maxAngle)
+    self:beginChallenge(offer.boardId, offer.seed, offer.modeId, offer.maxAngle, offer.timedCatcher)
     self.offer = nil
 end
 

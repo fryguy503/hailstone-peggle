@@ -1,15 +1,19 @@
 local Duel = {}
 Duel.__index = Duel
 
--- Codes encode a board, mode and seed, followed by three base-36 digits per replay shot.
--- The aim limit in angle units is also the offset for signed shots and is fixed per version.
+-- PW1/PW2 use three base-36 digits for each offset shot angle. PW3 uses four base-64
+-- digits for the shot angle and the catcher's position within its cycle at launch.
 local maxSeed, maxRounds, angleScale = 2147483646, 48, 10000
-local legacyVersion, currentVersion = 1, 2
-local angleLimits = {[legacyVersion] = 12200, [currentVersion] = 18300}
+local legacyVersion, fixedCatcherVersion, timedCatcherVersion = 1, 2, 3
+local angleLimits = {12200, 18300, 18300}
+local catcherCycleTicks = 432
 local legacyBoards = {grove = true, foundry = true, basin = true, crown = true, tide = true, vault = true}
 local legacyModes = {standard = true, precision = true, practice = true}
-local maxCodeLength = 192
-local digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+local maxCodeLength = 256
+local base36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+local base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+local base64Values = {}
+for i = 1, #base64 do base64Values[base64:sub(i, i)] = i - 1 end
 local eventName = "pegworks_duel_tell"
 local eventPattern = "#1# tells you, 'PW#2#'"
 
@@ -25,21 +29,37 @@ local function validPeer(name)
     return type(name) == "string" and #name <= 63 and name:match("^[A-Za-z]+$") ~= nil
 end
 
-local function versionForAngle(maxAngle)
-    if maxAngle == angleLimits[legacyVersion] / angleScale then return legacyVersion end
-    if maxAngle == nil or maxAngle == angleLimits[currentVersion] / angleScale then return currentVersion end
+local function versionForRules(maxAngle, timedCatcher)
+    if maxAngle == angleLimits[legacyVersion] / angleScale then
+        if not timedCatcher then return legacyVersion end
+    elseif maxAngle == nil or maxAngle == angleLimits[timedCatcherVersion] / angleScale then
+        if timedCatcher == false then return fixedCatcherVersion end
+        return timedCatcherVersion
+    end
 end
 
-local function encodeAngle(angle, angleLimit)
-    local value = angle + angleLimit
-    local high = math.floor(value / 1296) + 1
-    local middle = math.floor(value / 36) % 36 + 1
-    local low = value % 36 + 1
-    return digits:sub(high, high) .. digits:sub(middle, middle) .. digits:sub(low, low)
+local function encodeDigits(value, digits, width)
+    local chars = {}
+    for i = width, 1, -1 do
+        local index = value % #digits + 1
+        chars[i] = digits:sub(index, index)
+        value = math.floor(value / #digits)
+    end
+    return table.concat(chars)
+end
+
+local function decodeBase64(chars)
+    local value = 0
+    for i = 1, #chars do
+        local digit = base64Values[chars:sub(i, i)]
+        if digit == nil then return nil end
+        value = value * 64 + digit
+    end
+    return value
 end
 
 local function encodeHeader(version, kind, boardId, seed, modeId)
-    if not angleLimits[version] then return nil, "This aim range cannot be shared." end
+    if not angleLimits[version] then return nil, "This combination of aim and catcher rules cannot be shared." end
     if not validId(boardId) or not validId(modeId) or not integer(seed, 1, maxSeed) then
         return nil, "This board, mode, or seed cannot be shared."
     end
@@ -49,8 +69,8 @@ local function encodeHeader(version, kind, boardId, seed, modeId)
     return string.format("PW%d%s-%s-%s-%.0f", version, kind, boardId, modeId, seed)
 end
 
-function Duel.challenge(boardId, seed, modeId, maxAngle)
-    return encodeHeader(versionForAngle(maxAngle), "C", boardId, seed, modeId)
+function Duel.challenge(boardId, seed, modeId, maxAngle, timedCatcher)
+    return encodeHeader(versionForRules(maxAngle, timedCatcher), "C", boardId, seed, modeId)
 end
 
 function Duel.result(run)
@@ -58,7 +78,7 @@ function Duel.result(run)
     if result.phase ~= "won" and result.phase ~= "lost" then
         return nil, "Finish the round to share a replay."
     end
-    local version = versionForAngle(run.maxAngle)
+    local version = versionForRules(run.maxAngle, run.timedCatcher)
     local header, err = encodeHeader(version, "R", result.boardId, result.seed, result.modeId)
     if not header then return nil, err end
 
@@ -66,9 +86,19 @@ function Duel.result(run)
     local angles = run.angles
     if #angles < 1 or #angles > maxRounds then return nil, "This round cannot be shared." end
     local shots = {}
+    local timedCatcher = version == timedCatcherVersion
+    local angleCount = angleLimit * 2 + 1
+    local launchTicks = run.launchCatcherTicks
     for i, angle in ipairs(angles) do
         if not integer(angle, -angleLimit, angleLimit) then return nil, "This shot cannot be shared." end
-        shots[i] = encodeAngle(angle, angleLimit)
+        local offsetAngle = angle + angleLimit
+        if timedCatcher then
+            local catcherTick = launchTicks and launchTicks[i]
+            if not integer(catcherTick, 0, catcherCycleTicks - 1) then return nil, "This shot has invalid timing." end
+            shots[i] = encodeDigits(offsetAngle + angleCount * catcherTick, base64, 4)
+        else
+            shots[i] = encodeDigits(offsetAngle, base36, 3)
+        end
     end
     return header .. "-" .. table.concat(shots)
 end
@@ -82,40 +112,60 @@ end
 
 local function decode(game, code)
     if type(code) ~= "string" or #code > maxCodeLength then return nil, "Enter a valid Peggle code." end
-    code = code:lower():match("^%s*(.-)%s*$")
-    local versionText, kind, boardId, modeId, seedText, tail = code:match("^pw(%d)([cr])%-([a-z]+)%-([a-z]+)%-(%d+)(.*)$")
+    code = code:match("^%s*(.-)%s*$")
+    local versionText, kind, boardId, modeId, seedText, tail =
+        code:match("^[Pp][Ww](%d)([CcRr])%-([A-Za-z]+)%-([A-Za-z]+)%-(%d+)(.*)$")
     local version = tonumber(versionText)
     local angleLimit = angleLimits[version]
     if not angleLimit then return nil, "Enter a supported Peggle challenge or replay code." end
 
+    kind, boardId, modeId = kind:upper(), boardId:lower(), modeId:lower()
     local seed = tonumber(seedText)
-    local header, err = encodeHeader(version, kind:upper(), boardId, seed, modeId)
+    local header, err = encodeHeader(version, kind, boardId, seed, modeId)
     if not header then return nil, err end
     if not hasId(game.boards, boardId) or not hasId(game.modes, modeId) then
         return nil, "This board, mode, or seed is unavailable."
     end
+    local timedCatcher = version == timedCatcherVersion
     local entry = {
         kind = "challenge", boardId = boardId, seed = seed, modeId = modeId, code = header,
-        version = version, maxAngle = angleLimit / angleScale,
+        version = version, maxAngle = angleLimit / angleScale, timedCatcher = timedCatcher,
     }
-    if kind == "c" then
+    if kind == "C" then
         if tail == "" then return entry end
         return nil, "This challenge code has extra text."
     end
 
-    local payload = tail:match("^%-([0-9a-z]+)$")
-    if not payload or #payload % 3 ~= 0 or #payload > maxRounds * 3 then
+    local payload = tail:match("^%-(.+)$")
+    local width = timedCatcher and 4 or 3
+    if not payload or #payload % width ~= 0 or #payload > maxRounds * width then
         return nil, "This replay code has an invalid shot list."
     end
-    local angles = {}
-    for i = 1, #payload, 3 do
-        local angle = tonumber(payload:sub(i, i + 2), 36) - angleLimit
-        if angle > angleLimit then return nil, "This replay code has an invalid shot angle." end
-        angles[#angles + 1] = angle
+    if not timedCatcher then
+        payload = payload:lower()
+        if not payload:match("^[0-9a-z]+$") then return nil, "This replay code has an invalid shot angle." end
+    end
+    local angles, catcherTicks = {}, {}
+    local angleCount = angleLimit * 2 + 1
+    for i = 1, #payload, width do
+        local shot = payload:sub(i, i + width - 1)
+        if timedCatcher then
+            local value = decodeBase64(shot)
+            if not value or value >= angleCount * catcherCycleTicks then
+                return nil, "This replay code has an invalid timed shot."
+            end
+            angles[#angles + 1] = value % angleCount - angleLimit
+            catcherTicks[#catcherTicks + 1] = math.floor(value / angleCount)
+        else
+            local angle = tonumber(shot, 36) - angleLimit
+            if angle > angleLimit then return nil, "This replay code has an invalid shot angle." end
+            angles[#angles + 1] = angle
+        end
     end
     entry.kind = "result"
     entry.code = header .. "-" .. payload
     entry.angles = angles
+    entry.catcherTicks = catcherTicks
     return entry
 end
 
@@ -127,7 +177,7 @@ function Duel:import(code)
     local entry, err = decode(self.game, code)
     if not entry then return nil, err end
     if entry.kind == "result" then
-        self.replayRun = self.game.new(entry.boardId, entry.seed, entry.modeId, entry.maxAngle)
+        self.replayRun = self.game.new(entry.boardId, entry.seed, entry.modeId, entry.maxAngle, entry.timedCatcher)
         self.replay = entry
         self.shotIndex = 1
         self.shotSteps = 0
@@ -150,6 +200,7 @@ function Duel:tick()
                 self.verified.code = entry.code
                 self.verified.maxAngle = entry.maxAngle
                 self.verified.version = entry.version
+                self.verified.timedCatcher = entry.timedCatcher
             else
                 self.error = "This replay lists shots after the round ended."
             end
@@ -165,7 +216,8 @@ function Duel:tick()
             run:update(0.25)
         else
             local angle = entry.angles[self.shotIndex]
-            if angle == nil or not run:launch(angle / angleScale) then
+            local catcherTick = entry.catcherTicks[self.shotIndex]
+            if angle == nil or not run:launch(angle / angleScale, catcherTick) then
                 self.error = "This replay stopped before the round ended."
                 break
             end

@@ -116,11 +116,12 @@ local function play(dt)
     local run = Game.new("basin", 827107, "standard")
     local sequence = { 0.3, -0.9, 1.1, -0.6448, 0.11157, 0.22, -0.944, 0.835, 1.2, -1.2, 0.91, -0.03 }
     local notes = {}
-    for _, angle in ipairs(sequence) do
+    for index, angle in ipairs(sequence) do
         if Game.isTerminal(run.phase) then
             break
         end
-        assert(run:launch(angle))
+        run:update(dt * 2)
+        assert(run:launch(angle, index * 29))
         assert(not run:launch(angle), "A second ball launched before the previous shot finished")
         for _, event in ipairs(finishShot(run, dt)) do
             notes[#notes + 1] = event.type .. "/" .. tostring(event.kind) .. "/" .. tostring(event.points)
@@ -137,20 +138,82 @@ for field, result in pairs(quick:result()) do
     assert(result == slow:result()[field], "Frame timing changed " .. field)
 end
 assert(#quick.angles == quick.rounds and quick.angles[5] == 1116)
+assert(#quick.launchCatcherTicks == quick.rounds and quick.launchCatcherTicks[5] == 145)
 
-local catchRun = Game.new("grove", 1, "precision")
+local catchRun = Game.new("grove", 1, "precision", Game.maxAngle, false)
 catchRun.pegs = {}
 catchRun.shots = 1
+local legacyReady = catchRun:catcher()
+catchRun:update(0.27)
+assert(catchRun:catcher() == legacyReady and not catchRun:launch(0, 20))
 assert(catchRun:launch(0))
+assert(catchRun:catcher() == legacyReady and #catchRun.launchCatcherTicks == 0)
+catchRun:update(0.25)
+local legacyInFlight = catchRun.width / 2
+    + ((catchRun.width - catchRun.catcherWidth) / 2 - 13) * math.sin(0.011 + 1.97 + 0.25 * 1.74)
+assert(math.abs(catchRun:catcher() - legacyInFlight) < 1e-8)
 assert(hasEvent(finishShot(catchRun, 0.25), "catch"))
 assert(catchRun.phase == "ready" and catchRun.catches == 1 and catchRun.shots == 1)
 
-local miss = Game.new("grove", 100, "precision")
+local miss = Game.new("grove", 100, "precision", Game.maxAngle, false)
 miss.pegs = {}
 miss.shots = 1
 assert(miss:launch(0))
 assert(hasEvent(finishShot(miss, 0.25), "finish").phase == "lost")
 assert(Game.isTerminal(miss.phase) and not miss:launch(0))
+
+local function catcherPosition(run, tick)
+    local amplitude = (run.width - run.catcherWidth) / 2 - 13
+    return run.width / 2 + amplitude * math.sin(tick * 2 * math.pi / Game.catcherCycleTicks)
+end
+
+local motion = Game.new("grove", Game.catcherCycleTicks, "standard")
+motion.pegs = {}
+assert(motion.timedCatcher and not legacy.timedCatcher)
+assert(not motion:launch(0, -1) and not motion:launch(0, 432) and not motion:launch(0, 1.5))
+assert(motion.phase == "ready" and motion.rounds == 0)
+assert(math.abs(motion:catcher() - catcherPosition(motion, 0)) < 1e-8)
+motion:update(0.103)
+local beforeLaunch = motion:catcher()
+assert(math.abs(beforeLaunch - catcherPosition(motion, 12.36)) < 1e-8)
+motion:update(3.6)
+assert(math.abs(motion:catcher() - beforeLaunch) < 1e-8, "The catch tray did not complete one full sweep")
+assert(motion:launch(0))
+assert(motion.launchCatcherTicks[1] == 12)
+assert(math.abs(motion:catcher() - beforeLaunch) < 1e-8, "The catch tray jumped at launch")
+motion:update(0.071)
+local elapsed = 12 + 8.52
+while motion.phase == "flight" do
+    assert(math.abs(motion:catcher() - catcherPosition(motion, elapsed)) < 1e-8)
+    motion:update(1 / 120)
+    elapsed = elapsed + 1
+end
+assert(motion.phase == "ready")
+assert(math.abs(motion:catcher() - catcherPosition(motion, elapsed)) < 1e-8, "The catch tray jumped at settle")
+motion:update(0.01)
+assert(math.abs(motion:catcher() - catcherPosition(motion, elapsed + 1.2)) < 1e-8)
+
+local lag = Game.new("grove", 1, "standard")
+assert(lag:launch(0, 0))
+lag:update(2)
+assert(lag.phase == "flight" and lag.ticks == 30, "The game simulated a long frame at once")
+assert(math.abs(lag:catcher() - catcherPosition(lag, 30)) < 1e-8, "The catch tray advanced ahead of the ball")
+
+local function timedCatch(tick, idle, dt)
+    local run = Game.new("grove", 1, "precision")
+    run.pegs = {}
+    run.shots = 1
+    run:update(idle)
+    assert(run:launch(0, tick) and run.launchCatcherTicks[1] == tick)
+    return run, hasEvent(finishShot(run, dt), "catch")
+end
+
+local caught, catchEvent = timedCatch(348, 0.17, 0.25)
+assert(catchEvent and caught.catches == 1 and caught.shots == 1)
+local replay, replayEvent = timedCatch(348, 1.23, 1 / 144)
+assert(replayEvent and replayEvent.x == catchEvent.x and replay.ticks == caught.ticks)
+local lost, noCatch = timedCatch(24, 1.23, 0.25)
+assert(not noCatch and lost.catches == 0 and lost.phase == "lost", "Changing the launch phase did not change the catch")
 
 local win = Game.new("grove", 100, "precision")
 win.pegs = { { x = win.launcherX, y = 100, kind = "orange" } }
