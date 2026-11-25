@@ -111,7 +111,7 @@ local function header(c, state)
     c.triangle(48, 32, 66, 52, 48, 72, color.goldDeep, 0.85)
     c.triangle(48, 32, 30, 52, 48, 72, color.gold, 0.95)
     c.dot(48, 52, 5, color.ink)
-    c.label(84, 27, 'PEGWORKS', 34)
+    c.label(84, 27, 'PEGGLE', 34)
     c.label(86, 66, 'HAILSTONE ARCADE', 13, color.gold)
 
     if c.button('play', 'Play', 618, 34, 76, 34, state.page == 'play') then state.page = 'play' end
@@ -437,7 +437,7 @@ local function help(c, state)
         c.label(50+(i-1)*330, 545, mode.name..'  /  '..mode.shots..' shots', 18)
         c.label(50+(i-1)*330, 574, mode.description, 14, color.muted)
     end
-    c.label(50, 646, 'Use /pegworks to open or close the cabinet.', 16, color.muted)
+    c.label(50, 646, 'Use /peggle to open or close the cabinet.', 16, color.muted)
 end
 
 local function records(c, state)
@@ -495,7 +495,7 @@ local function duelPage(c, ui, state)
     if c.button('listen', duel.listening and 'Tells on' or 'Tells off', 50, 530, 107, 31, duel.listening) then
         state:setListening(not duel.listening)
     end
-    c.label(177, 537, 'Receive Pegworks codes from in-game tells', 15, color.muted)
+    c.label(177, 537, 'Receive Peggle codes from in-game tells', 15, color.muted)
     if duel.inbox then
         c.label(50, 584, 'From '..duel.inbox.peer, 16, color.green)
         if c.button('inbox', 'Use received code', 50, 610, 176, 31) then
@@ -554,7 +554,7 @@ function Cabinet.draw(ui, state, now)
     ui.PushStyleColor(ui.Col.FrameBgHovered, color.edge[1], color.edge[2], color.edge[3], 1)
     ui.PushStyleColor(ui.Col.Text, color.text[1], color.text[2], color.text[3], 1)
     local flags = ui.WindowFlags.NoScrollbar + ui.WindowFlags.NoScrollWithMouse + ui.WindowFlags.NoCollapse
-    local open, visible = ui.Begin('Pegworks##PegworksCabinet', state.open, flags)
+    local open, visible = ui.Begin('Peggle###PegworksCabinet', state.open, flags)
     state.open = open
     if visible then
         local x, y = ui.GetCursorScreenPos()

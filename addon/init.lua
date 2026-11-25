@@ -151,7 +151,7 @@ local function serviceDuels()
         local enabled = state.pendingListening
         state.pendingListening = nil
         local ok, errorText = duel:listen(enabled)
-        state:status(ok and (enabled and 'Listening for Pegworks tells.' or 'Tell listening is off.') or errorText, not ok)
+        state:status(ok and (enabled and 'Listening for Peggle tells.' or 'Tell listening is off.') or errorText, not ok)
     end
     local tell = state.pendingTell
     if tell then
@@ -207,11 +207,18 @@ end
 
 state:start(Game.boards[1].id, freshSeed(), Game.modes[1].id, false)
 
-mq.bind('/pegworks', function(args)
+local function toggleCabinet(args)
     if args == 'open' then state.open = true
     elseif args == 'close' then state.open = false
     else state.open = not state.open end
-end)
+end
+
+local primaryBound, bindError = pcall(mq.bind, '/peggle', toggleCabinet)
+local aliasBound = pcall(mq.bind, '/pegworks', toggleCabinet)
+if not primaryBound then
+    if not aliasBound then error(bindError, 0) end
+    print('[Peggle] /peggle is unavailable. Use /pegworks to open the cabinet.')
+end
 
 mq.imgui.init('pegworks', function()
     if state.open then Cabinet.draw(ui, state, state.now) end

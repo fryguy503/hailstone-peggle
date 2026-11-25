@@ -66,10 +66,10 @@ local function hasId(options, id)
 end
 
 local function decode(game, code)
-    if type(code) ~= "string" or #code > maxCodeLength then return nil, "Enter a valid Pegworks code." end
+    if type(code) ~= "string" or #code > maxCodeLength then return nil, "Enter a valid Peggle code." end
     code = code:lower():match("^%s*(.-)%s*$")
     local kind, boardId, modeId, seedText, tail = code:match("^pw1([cr])%-([a-z]+)%-([a-z]+)%-(%d+)(.*)$")
-    if not kind then return nil, "Enter a Pegworks v1 challenge or replay code." end
+    if not kind then return nil, "Enter a Peggle v1 challenge or replay code." end
 
     local seed = tonumber(seedText)
     local header = encodeHeader(kind:upper(), boardId, seed, modeId)

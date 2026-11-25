@@ -85,4 +85,4 @@ assert(manual:import(result .. "000"))
 finishVerification(manual)
 assert(manual.error and not manual.verified)
 
-print("Pegworks friend challenge, tell, and replay tests passed.")
+print("Peggle friend challenge, tell, and replay tests passed.")

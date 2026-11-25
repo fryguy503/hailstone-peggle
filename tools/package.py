@@ -1,4 +1,4 @@
-"""Stage Pegworks and build a portable release with the Hailstone packager."""
+"""Stage Peggle for Hailstone and build a portable release."""
 
 import argparse
 import shutil
@@ -28,7 +28,7 @@ def main():
                 sys.executable, str(packager),
                 "--name", "pegworks", "--kind", "script", "--version", args.version,
                 "--min-client", "0.7.2-beta", "--author", "fryguy503",
-                "--description", "A peg-board arcade game with six boards, local records, and friend duels.",
+                "--description", "Peggle for Hailstone. Six original boards, local records, and friend duels.",
                 "--caps", "commands,ui,chat,events", "--autoload",
                 "--dir", str(stage), "--out", str(root / "dist"),
             ],

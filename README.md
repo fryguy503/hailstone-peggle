@@ -1,6 +1,6 @@
-# Pegworks
+# Peggle for Hailstone
 
-Pegworks is a peg-board arcade game for Hailstone. Aim a marble, chain rebounds, and clear the amber targets before you run out of shots. The moving tray gives back any shot it catches.
+Peggle is a peg-board arcade game for Hailstone. Aim a marble, chain rebounds, and clear the amber targets before you run out of shots. The moving tray gives back any shot it catches.
 
 Play six original boards in Standard, Precision, or Practice mode. Green pegs boost a rebound. Violet pegs double the points on your next three hits during that shot. Each board and mode has a local record, and completed runs track your best combo.
 
@@ -8,7 +8,9 @@ Play six original boards in Standard, Precision, or Practice mode. Green pegs bo
 
 1. Use Hailstone 0.7.2-beta or newer. On the login screen, open **Add-ons**, then **Find add-ons**.
 2. Paste `fryguy503/hailstone-peggle`, choose **Look**, and review the install card.
-3. After entering the world, type `/pegworks` to open or close the cabinet. Aim with the mouse and click to launch, or use the arrow keys and Space while the cabinet has focus.
+3. After entering the world, type `/peggle` to open or close the cabinet. Aim with the mouse and click to launch, or use the arrow keys and Space while the cabinet has focus.
+
+Hailstone lists the add-on under its original install ID, `pegworks`. Updates preserve saved records, and `/pegworks` remains a shortcut.
 
 The release is a portable Lua add-on. A server must allow the add-on and grant `ui` and `commands` for the cabinet and its slash command. The optional tell controls use `chat` and `events`.
 
@@ -27,13 +29,13 @@ From this repository, with Lua and Python installed and a Hailstone checkout ava
 ```sh
 lua tests/game_test.lua
 lua tests/duel_test.lua
-python tools/package.py --hailstone ../hailstone-client --version 1.0.0
+python tools/package.py --hailstone ../hailstone-client --version 1.0.1
 ```
 
 The package command stages the runtime Lua files and license, then runs Hailstone's packager. Upload `dist/hailstone-addon.txt` and the ZIP it names to the same GitHub release. Hailstone picks up a regular published release when players install by repository name.
 
 ## Credits and license
 
-The project was inspired by the WoW Peggle add-on. Pegworks ships original code, board layouts, naming, and artwork. [WoW add-on archive](https://github.com/ketho-wow/wow_peggle)
+The project was inspired by the WoW Peggle add-on. This Hailstone release ships original code, board layouts, and artwork. [WoW add-on archive](https://github.com/ketho-wow/wow_peggle)
 
-Pegworks is All Rights Reserved, matching the upstream release's licensing model. Its personal-use permission is in [LICENSE](LICENSE).
+This add-on is All Rights Reserved, matching the upstream release's licensing model. Its personal-use permission is in [LICENSE](LICENSE).
