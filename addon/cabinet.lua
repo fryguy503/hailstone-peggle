@@ -544,7 +544,7 @@ function Cabinet.draw(ui, state, now)
     local initialH = math.min(io.height, math.max(minH, HEIGHT*initialScale+24))
     ui.SetNextWindowSize(initialW, initialH, ui.Cond.FirstUseEver)
     ui.SetNextWindowPos((io.width-initialW)/2, (io.height-initialH)/2, ui.Cond.FirstUseEver)
-    ui.SetNextWindowSizeConstraints(minW, minH, io.width, io.height)
+    if ui.SetNextWindowSizeConstraints then ui.SetNextWindowSizeConstraints(minW, minH, io.width, io.height) end
     ui.PushStyleVar(ui.StyleVar.WindowPadding, 0, 0)
     ui.PushStyleVar(ui.StyleVar.WindowRounding, 8)
     ui.PushStyleColor(ui.Col.WindowBg, color.ink[1], color.ink[2], color.ink[3], 1)
