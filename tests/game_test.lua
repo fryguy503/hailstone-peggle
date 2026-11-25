@@ -40,7 +40,7 @@ local function aimAt(run, x, y, peg, shouldHit)
     return angle
 end
 
-assert(#Game.boards == 12)
+assert(#Game.boards == 13 and Game.boards[13].id == "aurora")
 for _, board in ipairs(Game.boards) do
     for _, mode in ipairs(Game.modes) do
         local run = Game.new(board.id, 827107, mode.id)
@@ -102,6 +102,13 @@ for _, index in ipairs({ 1, 3 }) do
     assert(peg.y == 88 and math.abs(peg.x - run.launcherX) > 290)
     assert(math.abs(aimAt(run, peg.x, peg.y, peg, true)) > math.pi / 2,
         "The outermost upper peg must be reached by an upward launch")
+end
+
+for _, index in ipairs({ 1, 29 }) do
+    local run = Game.new("aurora", 827107, "standard")
+    local peg = run.pegs[index]
+    assert(math.abs(peg.x - run.launcherX) == 317)
+    aimAt(run, peg.x, peg.y - 13, peg, true)
 end
 
 local legacy = Game.new("grove", 1, "standard", Game.legacyMaxAngle)
@@ -247,7 +254,8 @@ assert(purple.phase == "ready" and purple.charge == 0 and purple.power == nil)
 local function strike(run, peg)
     assert(run.phase == "flight")
     run.ball = { x = peg.x - 16, y = peg.y, vx = 360, vy = -525 / 120 }
-    return hasEvent(run:update(1 / 120), "hit")
+    local events = run:update(1 / 120)
+    return hasEvent(events, "hit"), events
 end
 
 local greenPeg = { x = 150, y = 120, kind = "green" }
@@ -272,5 +280,140 @@ for index, expected in ipairs({ 40, 40, 80, 40 }) do
     assert(resonant.charge == math.max(0, 3 - index))
 end
 assert(resonant.power == nil)
+
+local function fixture(kinds, options)
+    local run = Game.new("grove", 1, "precision", nil, nil, options)
+    local pegs, targets = {}, 0
+    for index, kind in ipairs(kinds) do
+        pegs[index] = { x = 108 + index * 50, y = 140, kind = kind }
+        if kind == "orange" then
+            targets = targets + 1
+        end
+    end
+    run.pegs = pegs
+    run.totalPegs = #pegs
+    run.remainingPegs = #pegs
+    run.initialTargets = targets
+    run.remaining = targets
+    return run
+end
+
+local function endFlight(run)
+    run.ball = { x = run.launcherX, y = run.height + run.ballRadius + 1, vx = 0, vy = 0 }
+    return run:update(1 / 120)
+end
+
+local function bonusEvent(events, kind)
+    for _, event in ipairs(events) do
+        if event.type == "bonus" and event.kind == kind then
+            return event
+        end
+    end
+end
+
+local banked = fixture({ "orange", "blue" }, { bankBonus = 240 })
+banked.shots = 3
+assert(banked.solo and not banked:bank(), "Banking is available before the last amber peg")
+assert(banked:launch())
+local hit, beatEvents = strike(banked, banked.pegs[1])
+assert(hit.points == 150 and hasEvent(beatEvents, "beat"))
+assert(banked.beaten and not banked.fullCleared and not banked:bank())
+assert(banked.pegsHit == 1 and banked.remainingPegs == 1 and banked.completionPercent == 50)
+assert(not strike(banked, banked.pegs[1]) and banked.pegsHit == 1)
+assert(hasEvent(endFlight(banked), "settle") and banked.phase == "ready")
+assert(banked:bank() and not banked:bank() and not banked:launch())
+local bankEvents = banked:update(0)
+assert(bonusEvent(bankEvents, "unused").points == 1480 and not bonusEvent(bankEvents, "full"))
+assert(hasEvent(bankEvents, "finish").phase == "won" and banked.score == 1630)
+local bankResult = banked:result()
+assert(bankResult.banked and bankResult.beaten and not bankResult.fullCleared)
+assert(bankResult.totalPegs == 2 and bankResult.pegsHit == 1 and bankResult.remainingPegs == 1
+    and bankResult.completionPercent == 50)
+assert(#banked:update(0) == 0, "Banking issued duplicate events")
+
+local full = fixture({ "orange", "blue" }, { fullClearBonus = 1300 })
+full.shots = 3
+assert(full:launch() and strike(full, full.pegs[1]))
+assert(hasEvent(endFlight(full), "settle") and full.phase == "ready")
+assert(full:launch() and strike(full, full.pegs[2]))
+local fullEvents = endFlight(full)
+assert(bonusEvent(fullEvents, "full").points == 3800 and bonusEvent(fullEvents, "unused").points == 500)
+assert(hasEvent(fullEvents, "finish").phase == "won" and full.score == 4470)
+local fullResult = full:result()
+assert(fullResult.fullCleared and fullResult.beaten and not fullResult.banked)
+assert(fullResult.pegsHit == 2 and fullResult.remainingPegs == 0 and fullResult.completionPercent == 100)
+
+local outOfShots = fixture({ "orange", "blue" }, {})
+outOfShots.shots = 1
+assert(outOfShots:launch() and strike(outOfShots, outOfShots.pegs[1]))
+local outEvents = endFlight(outOfShots)
+assert(hasEvent(outEvents, "finish").phase == "won" and not hasEvent(outEvents, "bonus"))
+assert(not outOfShots.fullCleared and outOfShots.score == 150)
+
+local original = fixture({ "orange" }, nil)
+original.shots = 2
+assert(original:launch())
+local originalHit, originalHitEvents = strike(original, original.pegs[1])
+assert(originalHit.points == 150 and not hasEvent(originalHitEvents, "beat"))
+local originalOutcome = endFlight(original)
+assert(hasEvent(originalOutcome, "finish").phase == "won")
+assert(hasEvent(originalOutcome, "bonus").points == 500 and hasEvent(originalOutcome, "bonus").kind == nil)
+assert(original.score == 650 and original.fullCleared and not original:bank())
+
+local narrow = fixture({ "orange" }, {})
+local wide = fixture({ "orange" }, { extraShots = 3, guideSteps = 42, catcherWidth = 36, catchPoints = 225 })
+narrow.pegs, wide.pegs = {}, {}
+assert(wide.shots == narrow.shots + 3 and wide.guideSteps == narrow.guideSteps + 42)
+assert(#wide:preview(1.25) > #narrow:preview(1.25) and wide.catcherWidth == narrow.catcherWidth + 36)
+assert(narrow:launch(0, 364) and wide:launch(0, 364))
+assert(not hasEvent(finishShot(narrow, 0.25), "catch"))
+assert(hasEvent(finishShot(wide, 0.25), "catch").points == 225)
+assert(wide.catches == 1 and wide.score == 225 and wide.lastShot == 225)
+
+local stronger = fixture({ "green", "orange" }, { greenBoost = 55 })
+assert(stronger:launch() and strike(stronger, stronger.pegs[1]).points == 80)
+assert(math.abs(stronger.ball.vx - (-433.6)) < 1e-8 and stronger.ball.vy == -265)
+assert(stronger.launcherStyle == "ricochet" and not stronger.catchfieldActive)
+
+local fieldOptions = { launcher = "catchfield", catcherWidth = 36, greenBoost = 55 }
+local field = fixture({ "green", "green", "orange" }, fieldOptions)
+local reference = fixture({ "orange" }, fieldOptions)
+assert(field.launcherStyle == "catchfield" and not field.catchfieldActive and field.catcherWidth == 152)
+assert(field:launch(0, 108) and reference:launch(0, 108))
+assert(strike(field, field.pegs[1]).points == 80)
+reference:update(1 / 120)
+assert(field.catchfieldActive and field.catcherWidth == 225 and field.baseCatcherWidth == 152)
+assert(math.abs(field.ball.vx - (-273.6)) < 1e-8 and field.ball.vy == 0, "Catchfield changed the rebound")
+assert(field:catcher() == reference:catcher(), "The catch tray center jumped when Catchfield activated")
+assert(field:catcher() + field.catcherWidth / 2 <= field.width - 13 + 1e-8)
+assert(strike(field, field.pegs[2]).points == 80)
+reference:update(1 / 120)
+assert(field.catcherWidth == 225 and field:catcher() == reference:catcher(), "Catchfield stacked on a second green hit")
+endFlight(field)
+endFlight(reference)
+assert(field.phase == "ready" and not field.catchfieldActive and field.catcherWidth == 152)
+assert(field:catcher() == reference:catcher(), "The catch tray center jumped when Catchfield ended")
+assert(field:launch() and not field.catchfieldActive and field.catcherWidth == 152)
+
+local activeTray = fixture({ "green", "orange" }, fieldOptions)
+local inactiveTray = fixture({ "orange" }, fieldOptions)
+assert(activeTray:launch(0, 374) and inactiveTray:launch(0, 374))
+assert(strike(activeTray, activeTray.pegs[1]))
+inactiveTray:update(1 / 120)
+for _, run in ipairs({ activeTray, inactiveTray }) do
+    run.ball = { x = run.launcherX, y = run.launcherY, vx = 0, vy = 515 }
+end
+assert(hasEvent(finishShot(activeTray, 0.25), "catch") and not activeTray.catchfieldActive)
+assert(not hasEvent(finishShot(inactiveTray, 0.25), "catch"), "Catchfield did not change the catch boundary")
+
+local scoring = fixture({ "purple", "blue", "orange", "blue", "blue", "blue", "blue", "blue" }, {
+    resonanceHits = 3, comboPoints = 45, blueBonus = 20, targetBonus = 85,
+})
+assert(scoring:launch())
+for index, expected in ipairs({ 240, 60, 385, 100, 145, 145, 185, 125 }) do
+    assert(strike(scoring, scoring.pegs[index]).points == expected)
+    assert(scoring.charge == math.max(0, 7 - index))
+end
+assert(scoring.fullCleared and scoring.beaten and scoring.power == nil)
 
 print("Peg-board gameplay tests passed")

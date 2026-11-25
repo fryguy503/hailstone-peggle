@@ -11,6 +11,8 @@ local color = {
     gold = {1.00, 0.75, 0.36}, goldDeep = {0.91, 0.50, 0.21},
     green = {0.43, 0.91, 0.68}, red = {1.00, 0.56, 0.48},
     dark = {0.012, 0.020, 0.037}, white = {1, 1, 1},
+    steel = {0.15, 0.22, 0.30}, navy = {0.07, 0.10, 0.15},
+    frost = {0.55, 0.88, 1.00},
 }
 
 local gems = {
@@ -33,6 +35,7 @@ local scenes = {
     {{0.18, 0.12, 0.13}, {0.06, 0.08, 0.12}, {0.91, 0.49, 0.45}},
     {{0.19, 0.10, 0.25}, {0.09, 0.07, 0.19}, {0.86, 0.57, 0.98}},
     {{0.23, 0.16, 0.09}, {0.11, 0.08, 0.14}, {1.00, 0.73, 0.39}},
+    {{0.09, 0.19, 0.25}, {0.09, 0.07, 0.21}, {0.49, 1.00, 0.81}},
 }
 
 local function formatScore(n)
@@ -100,9 +103,11 @@ local function canvas(ui, x, y, s)
 end
 
 local function panel(c, x, y, w, h)
-    c.rect(x, y+3, x+w, y+h+3, color.dark, 0.8, 10)
+    c.rect(x-3, y+3, x+w+3, y+h+6, color.dark, 0.61, 13)
     c.rect(x, y, x+w, y+h, color.panel, 1, 10)
+    c.gradient(x+2, y+10, x+w-2, y+h-10, color.navy, color.inset)
     c.edge(x, y, x+w, y+h, color.edge, 0.85, 10)
+    c.line(x+12, y+1, x+w-12, y+1, color.steel, 0.88)
 end
 
 local function header(c, state)
@@ -111,15 +116,18 @@ local function header(c, state)
     c.line(20, 104, WIDTH-20, 104, color.edge, 0.95)
     c.line(20, 104, 206, 104, color.goldDeep, 0.84, 2)
 
+    c.dot(48, 54, 28, color.dark, 0.90)
     c.dot(48, 52, 26, color.gold, 0.11)
-    c.ring(48, 52, 24, color.gold, 0.54)
-    c.ring(48, 52, 18, color.gold, 0.30)
+    c.ring(48, 52, 24, color.goldDeep, 0.85, 2)
+    c.ring(48, 52, 20, color.gold, 0.38)
     c.triangle(48, 32, 66, 52, 48, 72, color.goldDeep, 0.85)
     c.triangle(48, 32, 30, 52, 48, 72, color.gold, 0.95)
     c.dot(48, 52, 5, color.ink)
     c.label(84, 27, 'PEGGLE', 34)
     c.label(86, 66, 'HAILSTONE ARCADE', 13, color.gold)
 
+    if c.button('boards', 'Boards', 404, 34, 93, 34, state.page == 'boards') then state.page = 'boards' end
+    if c.button('talents', 'Talents', 509, 34, 97, 34, state.page == 'talents') then state.page = 'talents' end
     if c.button('play', 'Play', 618, 34, 76, 34, state.page == 'play') then state.page = 'play' end
     if c.button('duels', 'Friend duels', 704, 34, 130, 34, state.page == 'duel') then state.page = 'duel' end
     if c.button('records', 'Records', 844, 34, 104, 34, state.page == 'records') then state.page = 'records' end
@@ -234,7 +242,7 @@ local function sceneDetail(c, x, y, w, h, tint, index)
             c.line(anchor+offset, y+259, anchor, y+402, tint, 0.18, 2)
             c.dot(anchor+offset, y+259, 4, tint, 0.20)
         end
-    else
+    elseif index == 12 then
         local center, horizon = x+w/2, y+h-69
         for i = 1, 12 do
             local angle = math.pi*(i-0.5)/12
@@ -244,6 +252,17 @@ local function sceneDetail(c, x, y, w, h, tint, index)
         end
         c.ring(center, horizon, 85, tint, 0.17, 2)
         c.line(x+28, horizon, x+w-28, horizon, tint, 0.22, 2)
+    else
+        for band = 1, 4 do
+            local lastX, lastY
+            for sample = 0, 17 do
+                local u = sample/17
+                local bx = x+27+u*(w-54)
+                local by = y+220+band*45+math.sin(2*math.pi*u+band*0.67)*67
+                if lastX then c.line(lastX, lastY, bx, by, tint, 0.18-band*0.021, 3) end
+                lastX, lastY = bx, by
+            end
+        end
     end
 end
 
@@ -261,6 +280,9 @@ local function backdrop(c, w, h, scene, index)
     end
 
     local centerX, centerY = px+w*(index % 2 == 0 and 0.57 or 0.43), py+h*0.55
+    for i = 5, 1, -1 do
+        c.dot(centerX, centerY, 68+i*36, t, 0.022+i*0.001)
+    end
     for i = 1, 5 do
         c.ring(centerX, centerY, i*42, t, i == 4 and 0.20 or 0.11)
     end
@@ -283,6 +305,8 @@ local function backdrop(c, w, h, scene, index)
     c.rect(px, py, px+6, py+h, color.dark, 0.85)
     c.rect(px+w-6, py, px+w, py+h, color.dark, 0.85)
     c.edge(px, py, px+w, py+h, t, 0.52)
+    c.line(px+8, py+2, px+w-8, py+2, t, 0.38, 2)
+    c.line(px+8, py+h-2, px+w-8, py+h-2, t, 0.35, 2)
     for _, x in ipairs({px+14, px+w-14}) do
         c.ring(x, py+14, 3, t, 0.5)
         c.ring(x, py+h-13, 3, t, 0.5)
@@ -291,13 +315,14 @@ end
 
 local function gem(c, x, y, radius, kind, hit)
     local t = gems[kind]
-    if hit then c.dot(x, y, radius+8, t[2], 0.16) end
-    c.dot(x, y+2, radius+1, color.dark, 0.9)
+    if hit then c.dot(x, y, radius+9, t[2], 0.24) end
+    c.dot(x+1, y+3, radius+1.7, color.dark, 0.91)
     c.dot(x, y, radius+0.5, hit and t[2] or t[3])
     c.dot(x, y-0.65, radius-1.45, hit and t[1] or t[3])
     c.dot(x, y-1.5, radius-2.4, t[1], hit and 0.93 or 0.87)
     c.ring(x, y, radius-0.2, t[2], hit and 0.95 or 0.77)
-    c.dot(x-radius*0.26, y-radius*0.33, radius*0.23, t[2], 0.83)
+    c.dot(x-radius*0.26, y-radius*0.33, radius*0.23, t[2], 0.93)
+    if hit then c.dot(x-radius*0.27, y-radius*0.34, radius*0.12, color.white, 0.84) end
     if kind == 'orange' then
         c.ring(x, y+0.4, radius*0.48, t[2], 0.74)
     elseif kind == 'green' then
@@ -335,8 +360,53 @@ local function accents(c, effects, now)
         if fx.points and fx.kind ~= 'blue' then
             c.label(x+9, y-22-progress*22, '+'..formatScore(fx.points), 15, tint, opacity)
         end
-        if fx.kind == 'green' then
-            c.label(x+9, y-40-progress*22, 'BOOST', 14, tint, opacity)
+        if fx.label then
+            c.label(x+9, y-40-progress*22, fx.label, 14, tint, opacity)
+        end
+    end
+end
+
+local function drawCatcher(c, run, scene)
+    local catcher = BOARD_X+run:catcher()
+    local bottom = BOARD_Y+run.catcherY
+    local half = run.catcherWidth/2
+    local tint = run.catchfieldActive and color.frost or color.gold
+    local rim = run.catchfieldActive and color.frost or color.goldDeep
+    c.line(BOARD_X+18, bottom, BOARD_X+run.width-18, bottom, scene[3], 0.31, 2)
+    c.line(BOARD_X+18, bottom+13, BOARD_X+run.width-18, bottom+13, color.dark, 0.92, 4)
+    c.rect(catcher-half, bottom+4, catcher+half, bottom+22, color.dark, 0.9, 8)
+    c.rect(catcher-half, bottom, catcher+half, bottom+19, color.dark, 0.97, 7)
+    c.gradient(catcher-half+4, bottom+6, catcher+half-4, bottom+15, color.steel, color.ink)
+    c.edge(catcher-half, bottom, catcher+half, bottom+19, rim, 0.94, 7, 2)
+    c.line(catcher-half+7, bottom+4, catcher+half-7, bottom+4, tint, 0.97, 2)
+    for offset = -36, 36, 12 do
+        if math.abs(offset) < half-7 then
+            c.line(catcher+offset, bottom+15, catcher+offset+4, bottom+10, scene[3], 0.57, 2)
+        end
+    end
+    c.dot(catcher-half+6, bottom+10, 2.1, tint)
+    c.dot(catcher+half-6, bottom+10, 2.1, tint)
+end
+
+local function celebration(c, run, age)
+    local tint = run.fullCleared and color.frost or color.gold
+    local count = run.fullCleared and 4 or 2
+    for burst = 1, count do
+        local t = math.max(0, age-(burst-1)*0.17)
+        if t > 0 and t < 1.4 then
+            local fade = 1-t/1.4
+            local centerX = BOARD_X+run.width*(burst%2 == 1 and 0.22 or 0.78)
+            local centerY = BOARD_Y+run.height*(burst <= 2 and 0.29 or 0.73)
+            local reach = 15+t*81
+            c.dot(centerX, centerY, 9+fade*10, tint, fade*0.19)
+            c.ring(centerX, centerY, reach*0.67, tint, fade*0.62, 2)
+            for ray = 1, 9 do
+                local a = ray*(2*math.pi/9)+burst*0.37
+                local dx, dy = math.cos(a), math.sin(a)
+                local x, y = centerX+dx*reach, centerY+dy*reach+t*t*31
+                c.line(x-dx*13, y-dy*13, x, y, tint, fade*0.78, 2)
+                c.dot(x, y, 1.5+fade*1.4, color.white, fade*0.82)
+            end
         end
     end
 end
@@ -389,23 +459,23 @@ local function field(c, ui, state, index, now)
 
     local angle = run.angle or 0
     local bx, by = tx+math.sin(angle)*23, ty+math.cos(angle)*23
+    local launcherTint = run.launcherStyle == 'catchfield' and color.frost or color.goldDeep
     c.line(tx, ty, bx, by, color.dark, 0.93, 16)
-    c.line(tx, ty, bx, by, color.goldDeep, 0.97, 12)
+    c.line(tx, ty, bx, by, launcherTint, 0.97, 12)
     c.line(tx, ty, bx, by, color.ink, 1, 7)
     c.dot(tx, ty, 17, color.dark, 0.96)
-    c.ring(tx, ty, 14, color.goldDeep, 0.92, 2)
+    c.ring(tx, ty, 14, launcherTint, 0.92, 2)
     if run.phase == 'ready' then marble(c, tx, ty, run.ballRadius) else c.dot(tx, ty, 7, color.panel) end
 
-    local catcher = px+run:catcher()
-    local bottom = py+run.catcherY
-    local half = run.catcherWidth/2
-    c.line(px+18, bottom, px+run.width-18, bottom, scene[3], 0.26, 2)
-    c.rect(catcher-half, bottom, catcher+half, bottom+19, color.dark, 0.93, 7)
-    c.edge(catcher-half, bottom, catcher+half, bottom+19, color.goldDeep, 0.94, 7, 2)
-    c.line(catcher-half+7, bottom+4, catcher+half-7, bottom+4, color.gold, 0.97, 2)
-    for offset = -36, 36, 12 do
-        if math.abs(offset) < half-7 then
-            c.line(catcher+offset, bottom+15, catcher+offset+4, bottom+10, scene[3], 0.57, 2)
+    drawCatcher(c, run, scene)
+
+    if run.solo and run.beaten and not state.Game.isTerminal(run.phase) then
+        local pulse = state.beatAt and math.max(0, 1-(now-state.beatAt)/1.8) or 0
+        c.rect(px+19, py+17, px+260, py+47, color.dark, 0.92, 5)
+        c.edge(px+19, py+17, px+260, py+47, color.gold, 0.51+pulse*0.33, 5)
+        c.label(px+31, py+23, 'Amber targets cleared', 17, color.gold)
+        if pulse > 0 then
+            c.edge(px+3, py+3, px+run.width-3, py+run.height-3, color.gold, pulse*0.72, 5, 3)
         end
     end
 
@@ -422,12 +492,22 @@ local function field(c, ui, state, index, now)
 
     if run.phase == 'won' or run.phase == 'lost' then
         c.rect(px+1, py+1, px+run.width-1, py+run.height-1, color.dark, 0.57)
+        if run.phase == 'won' and state.finishedAt and now-state.finishedAt < 2 then
+            celebration(c, run, now-state.finishedAt)
+        end
         local x, y = px+run.width/2-181, py+run.height/2-79
         panel(c, x, y, 362, 158)
         local won = run.phase == 'won'
-        local title = won and 'Board cleared' or (run.shots == 0 and 'Out of shots' or 'Run ended')
-        c.label(x+24, y+22, title, 32, won and color.gold or color.text)
-        c.label(x+25, y+70, formatScore(run.score)..' points', 19, color.muted)
+        local tint = run.fullCleared and color.frost or color.gold
+        local title = won and 'Board beaten' or (run.shots == 0 and 'Out of shots' or 'Run ended')
+        if run.fullCleared then title = '100% clear' end
+        if won then c.line(x+16, y+1, x+346, y+1, tint, 0.84, 2) end
+        c.label(x+24, y+17, title, 32, won and tint or color.text)
+        c.label(x+25, y+61, formatScore(run.score)..' points  /  '..run.pegsHit..' of '..run.totalPegs..' pegs', 18, color.muted)
+        if state.earnedPoints > 0 then
+            local noun = state.earnedPoints == 1 and ' talent point' or ' talent points'
+            c.label(x+25, y+86, '+'..state.earnedPoints..noun, 14, tint)
+        end
         if c.button('replay', 'Play again', x+24, y+108, 120, 31, true) then state:restart() end
         if c.button('advance', 'Next board', x+155, y+108, 130, 31) then state:pickBoard(1) end
     end
@@ -439,7 +519,8 @@ local function sidebar(c, state, board, mode)
     panel(c, x, 118, 278, 550)
     c.label(x+19, 136, board.name, 25)
     local rules = run.maxAngle < state.Game.maxAngle and ' / Classic aim' or ''
-    c.label(x+20, 169, mode.name..(state.challenge and ' / Duel' or '')..rules, 15, color.gold)
+    local launcher = run.launcherStyle == 'catchfield' and ' / Catchfield' or ' / Ricochet'
+    c.label(x+20, 169, mode.name..(state.challenge and ' / Duel' or launcher)..rules, 15, color.gold)
     local busy = run.phase == 'flight'
     if c.button('prevBoard', '< Board', x+18, 196, 111, 31, false, busy) then state:pickBoard(-1) end
     if c.button('nextBoard', 'Board >', x+137, 196, 121, 31, false, busy) then state:pickBoard(1) end
@@ -450,16 +531,23 @@ local function sidebar(c, state, board, mode)
     c.label(x+19, 296, 'SCORE', 13, color.muted)
     c.label(x+17, 315, formatScore(run.score), 42, color.gold)
     c.label(x+19, 368, 'Best  '..formatScore(state:record().score), 15, color.muted)
-    c.label(x+19, 407, 'AMBER TARGETS', 13, color.muted)
-    c.label(x+19, 427, run.remaining..' left', 24)
+    c.label(x+19, 404, 'AMBER TARGETS', 13, color.muted)
+    c.label(x+150, 400, run.remaining == 0 and 'Cleared' or run.remaining..' left', 18,
+        run.remaining == 0 and color.gold or color.text)
     local fraction = math.max(0, math.min(1, (run.initialTargets-run.remaining)/math.max(1, run.initialTargets)))
-    c.rect(x+19, 461, x+259, 469, color.inset, 1, 4)
-    if fraction > 0 then c.rect(x+19, 461, x+19+240*fraction, 469, color.goldDeep, 1, 4) end
-    c.label(x+19, 492, 'SHOTS LEFT', 13, color.muted)
-    c.label(x+190, 483, tostring(run.shots), 30, run.shots < 3 and color.red or color.text)
-    for i = 1, math.min(19, math.max(run.shots, mode.shots)) do
-        local px = x+23+(i-1)*12.5
-        c.dot(px, 526, 3.8, i <= run.shots and color.gold or color.edge, 0.95)
+    c.rect(x+19, 428, x+259, 435, color.inset, 1, 4)
+    if fraction > 0 then c.rect(x+19, 428, x+19+240*fraction, 435, color.goldDeep, 1, 4) end
+    c.label(x+19, 449, 'ALL PEGS', 13, color.muted)
+    c.label(x+150, 446, run.completionPercent..'% cleared', 17, color.frost)
+    c.rect(x+19, 472, x+259, 479, color.inset, 1, 4)
+    if run.completionPercent > 0 then
+        c.rect(x+19, 472, x+19+2.4*run.completionPercent, 479, color.frost, 0.88, 4)
+    end
+    c.label(x+19, 500, 'SHOTS LEFT', 13, color.muted)
+    c.label(x+190, 491, tostring(run.shots), 30, run.shots < 3 and color.red or color.text)
+    for i = 1, math.min(21, math.max(run.shots, mode.shots)) do
+        local px = x+23+(i-1)*11.5
+        c.dot(px, 536, 3.6, i <= run.shots and color.gold or color.edge, 0.95)
     end
     c.line(x+18, 551, x+259, 551, color.edge)
     c.label(x+19, 568, 'COMBO', 13, color.muted)
@@ -467,9 +555,14 @@ local function sidebar(c, state, board, mode)
     c.label(x+138, 568, 'SHOT POINTS', 13, color.muted)
     c.label(x+138, 589, formatScore(run.phase == 'flight' and run.shotScore or run.lastShot), 22)
     local status, tint
-    if run.charge > 0 then
+    if run.solo and run.beaten and run.phase == 'ready' then
+        if c.button('bankClear', 'Bank win', x+18, 621, 104, 30, true) then state:bank() end
+        c.label(x+134, 629, 'or aim for 100%', 14, color.frost)
+    elseif run.charge > 0 then
         status = 'Resonance x2  /  '..run.charge..' left'
         tint = gems.purple[2]
+    elseif run.catchfieldActive then
+        status, tint = 'Catchfield active', color.frost
     elseif state.notice and state.now < state.noticeUntil then
         status, tint = state.notice, color[state.noticeTone]
     end
@@ -493,18 +586,119 @@ local function play(c, ui, state, now)
     c.label(802, 691, catchTip, 16, color.gold)
 end
 
+local function gallery(c, ui, state)
+    panel(c, 20, 118, 1060, 580)
+    c.label(49, 145, 'Choose a board', 34)
+    local entries, beaten, mastered = {}, 0, 0
+    for i, board in ipairs(state.Game.boards) do
+        local result = state.Progress.boardProgress(state.profile, board.id)
+        entries[i] = result
+        if result.cleared then beaten = beaten+1 end
+        if result.fullCleared then mastered = mastered+1 end
+    end
+    c.label(50, 188, beaten..' beaten  /  '..mastered..' at 100%', 17, color.muted)
+    for i, board in ipairs(state.Game.boards) do
+        local x, y = 49+((i-1)%5)*202, 226+math.floor((i-1)/5)*148
+        local result, scene = entries[i], scenes[i]
+        local current = state.run.boardId == board.id
+        c.position(x, y)
+        ui.BeginDisabled(state.run.phase == 'flight')
+        local hit = ui.InvisibleButton('##board_'..board.id, 191*c.scale, 132*c.scale, ui.ButtonFlags.EnableNav)
+        local hover = ui.IsItemHovered() or ui.IsItemFocused()
+        ui.EndDisabled()
+        c.rect(x, y, x+191, y+132, color.navy, 1, 7)
+        c.gradient(x+5, y+5, x+186, y+79, scene[1], scene[2])
+        for n, peg in ipairs(state.boardPreviews[board.id]) do
+            if n%2 == 0 then
+                local tint = peg.kind == 'orange' and color.gold or scene[3]
+                local opacity = peg.kind == 'orange' and 0.92 or 0.55
+                c.dot(x+10+peg.x*0.224, y+6+peg.y*0.144, 1.85, tint, opacity)
+            end
+        end
+        c.label(x+10, y+86, board.name, 17)
+        if result.fullCleared then
+            c.label(x+10, y+111, '100% clear', 13, color.frost)
+        elseif result.cleared then
+            c.label(x+10, y+111, 'Beaten', 13, color.gold)
+        elseif result.bestClearedPercent then
+            c.label(x+10, y+111, result.bestClearedPercent..'% cleared', 13, color.muted)
+        end
+        c.edge(x, y, x+191, y+132, (current or hover) and color.gold or color.edge, hover and 1 or 0.78, 7)
+        if hit then state:chooseBoard(board.id) end
+    end
+end
+
+local function launcherPicker(c, ui, state)
+    for index, launcher in ipairs(state.Progress.launchers) do
+        local x, y = 49+(index-1)*510, 199
+        local selected = state.profile.launcher == launcher.id
+        local tint = launcher.id == 'ricochet' and color.gold or color.frost
+        c.position(x, y)
+        local hit = ui.InvisibleButton('##launcher_'..launcher.id, 492*c.scale, 63*c.scale, ui.ButtonFlags.EnableNav)
+        local hover = ui.IsItemHovered() or ui.IsItemFocused()
+        c.rect(x, y, x+492, y+63, selected and color.steel or color.navy, 1, 6)
+        c.edge(x, y, x+492, y+63, (selected or hover) and tint or color.edge, 0.85, 6)
+        c.dot(x+22, y+21, 5, tint, selected and 0.92 or 0.46)
+        if selected then c.ring(x+22, y+21, 9, tint, 0.42) end
+        c.label(x+41, y+8, launcher.name, 20, tint)
+        c.label(x+41, y+37, launcher.description, 14, color.muted)
+        if hit then state:selectLauncher(launcher.id) end
+    end
+end
+
+local function talentPage(c, ui, state)
+    panel(c, 20, 118, 1060, 580)
+    local progress, profile = state.Progress, state.profile
+    local budget = progress.budget(profile)
+    c.label(49, 137, 'Talents', 34)
+    c.label(49, 173, 'Launcher powers and ranks apply in solo play.', 15, color.muted)
+    c.label(508, 146, budget.available..' available  /  '..budget.earned..' earned', 20, color.gold)
+    if c.button('resetTalents', 'Reset ranks', 897, 140, 154, 32, false, budget.spent == 0) then state:resetTalents() end
+    launcherPicker(c, ui, state)
+
+    for index, discipline in ipairs(progress.catalog) do
+        local x = 49+(index-1)*510
+        local tint = index == 1 and color.frost or color.gold
+        c.label(x, 276, discipline.name, 23, tint)
+        for row, talent in ipairs(discipline.talents) do
+            local y = 312+(row-1)*53
+            local rank = progress.rank(profile, talent.id)
+            local cost, reason = progress.canBuy(profile, talent.id)
+            c.rect(x, y, x+492, y+48, row%2 == 0 and color.navy or color.panel, 0.96, 5)
+            c.label(x+10, y+3, talent.name, 17)
+            c.label(x+11, y+24, talent.description, 13, color.muted)
+            c.label(x+324, y+5, rank..'/'..#talent.costs, 16, rank > 0 and tint or color.muted)
+            for dot = 1, #talent.costs do
+                c.dot(x+327+(dot-1)*12, y+32, 3.2, dot <= rank and tint or color.edge)
+            end
+            local text = cost and ('Buy  '..cost..' pt') or 'Max rank'
+            if c.button('talent_'..talent.id, text, x+377, y+9, 105, 29, not reason, reason ~= nil) then
+                state:buyTalent(talent.id)
+            end
+            if ui.IsMouseHoveringRect(c.x+(x+377)*c.scale, c.y+(y+9)*c.scale,
+                c.x+(x+482)*c.scale, c.y+(y+38)*c.scale) and ui.BeginTooltip() then
+                if reason then ui.Text('%s', reason)
+                elseif cost then ui.Text('Next rank: +%d %s', talent.effects[rank+1], talent.unit) end
+                ui.EndTooltip()
+            end
+        end
+    end
+    local hint = state.talentStatus or 'Earn one point for your first win and one for your first 100% clear on each board.'
+    c.label(50, 657, hint, 16, state.talentIssue and color.red or color.muted)
+end
+
 local function help(c, state)
     panel(c, 20, 118, 1060, 580)
     c.label(49, 145, 'How to play', 34)
-    c.label(50, 199, 'Clear every amber target before your shots run out.', 21)
+    c.label(50, 199, 'Clear every amber target to beat the board. Hit every peg for 100%.', 21)
     c.label(50, 234, 'Aim over the board and click to shoot. The dotted line shows the initial path.', 17, color.muted)
     c.label(50, 261, 'You can also aim with Left and Right and launch with Space while the window is focused.', 17, color.muted)
     c.line(50, 305, 1049, 305, color.edge)
 
     local legend = {
-        {'orange', 'Amber', 'Clear these to finish the board.'},
+        {'orange', 'Amber', 'Clear these to beat the board.'},
         {'blue', 'Blue', 'Chain rebounds off these for points.'},
-        {'green', 'Green', 'Boosts the rebound off this peg.'},
+        {'green', 'Green', 'Triggers your launcher power.'},
         {'purple', 'Violet', 'Doubles up to three new hits this shot.'},
     }
     for i, entry in ipairs(legend) do
@@ -521,7 +715,8 @@ local function help(c, state)
         c.label(50+(i-1)*330, 545, mode.name..'  /  '..mode.shots..' shots', 18)
         c.label(50+(i-1)*330, 574, mode.description, 14, color.muted)
     end
-    c.label(50, 646, 'Use /peggle to open or close the cabinet.', 16, color.muted)
+    c.label(50, 616, 'In solo play, bank a beaten board or use the remaining shots to go for 100%.', 17, color.frost)
+    c.label(50, 649, 'Use /peggle to open or close the cabinet.', 16, color.muted)
 end
 
 local function input(c, ui, id, value, x, y, w, limit, readOnly)
@@ -573,34 +768,37 @@ local function records(c, ui, state)
         for row = 1, rows do
             local board = boards[side*rows+row]
             if not board then break end
-            local y = 291+(row-1)*46
-            c.rect(x, y, x+486, y+41, row % 2 == 0 and color.inset or color.panel, 0.82, 5)
-            c.label(x+11, y+9, board.name, 18)
+            local y = 291+(row-1)*39
+            c.rect(x, y, x+486, y+35, row % 2 == 0 and color.inset or color.panel, 0.82, 5)
+            c.label(x+11, y+6, board.name, 17)
             for col, mode in ipairs(modes) do
                 local entry = state:record(board.id, mode.id)
                 local scoreX = x+167+(col-1)*108
                 local value = entry.score and formatScore(entry.score) or '-'
                 if entry.score then
                     c.position(scoreX-14, y+3)
-                    if ui.InvisibleButton('##record_'..board.id..'_'..mode.id, 98*c.scale, 34*c.scale,
+                    if ui.InvisibleButton('##record_'..board.id..'_'..mode.id, 98*c.scale, 29*c.scale,
                         ui.ButtonFlags.EnableNav) then
                         state:selectScore(board, mode, entry.score)
                     end
                     local selected = state.shareBoardId == board.id and state.shareModeId == mode.id
                     if selected or ui.IsItemHovered() or ui.IsItemFocused() then
-                        c.rect(scoreX-14, y+3, scoreX+84, y+37, color.gold, selected and 0.18 or 0.095, 4)
+                        c.rect(scoreX-14, y+3, scoreX+84, y+32, color.gold, selected and 0.18 or 0.095, 4)
                     end
                 end
-                if entry.cleared then c.dot(scoreX-9, y+19, 3, color.green) end
-                c.label(scoreX, y+10, value, 17, entry.cleared and color.green or color.text)
+                local tint = entry.fullCleared and color.frost or (entry.cleared and color.gold or color.text)
+                if entry.cleared then c.dot(scoreX-9, y+16, 3, tint) end
+                c.label(scoreX, y+7, value, 17, tint)
             end
         end
     end
     scoreShare(c, ui, state)
     c.label(50, 644, 'Best combo  x'..tostring(state.profile.bestCombo), 17, color.gold)
     c.label(300, 644, 'Runs finished  '..tostring(state.profile.runs), 17, color.muted)
-    c.dot(575, 652, 3, color.green)
-    c.label(585, 644, 'Board cleared', 17, color.muted)
+    c.dot(575, 652, 3, color.gold)
+    c.label(585, 644, 'Beaten', 17, color.muted)
+    c.dot(689, 652, 3, color.frost)
+    c.label(699, 644, '100% clear', 17, color.muted)
 end
 
 local function duelPage(c, ui, state)
@@ -616,7 +814,7 @@ local function duelPage(c, ui, state)
     if c.button('createDuel', 'Create challenge', 50, 325, 158, 32, true, run.phase == 'flight') then
         state:createChallenge()
     end
-    if c.button('shareResult', 'Get result code', 220, 325, 151, 32, false, not finished) then
+    if c.button('shareResult', 'Get result code', 220, 325, 151, 32, false, not finished or run.solo) then
         state:shareResult()
     end
     c.label(50, 381, 'Share code  /  Click then Ctrl+C', 16)
@@ -660,7 +858,7 @@ local function duelPage(c, ui, state)
     elseif duel.verified then
         local other = duel.verified
         c.label(580, 471, 'Friend score  '..formatScore(other.score), 21, color.green)
-        if finished and run.boardId == other.boardId and run.seed == other.seed and
+        if finished and not run.solo and run.boardId == other.boardId and run.seed == other.seed and
             run.modeId == other.modeId and run.maxAngle == other.maxAngle and run.timedCatcher == other.timedCatcher then
             local verdict = run.score == other.score and 'Tie' or (run.score > other.score and 'You win' or 'Friend wins')
             c.label(580, 509, 'Your score  '..formatScore(run.score)..'  /  '..verdict, 21)
@@ -703,6 +901,8 @@ function Cabinet.draw(ui, state, now)
         local c = canvas(ui, x+(width-WIDTH*scale)/2, y+(height-HEIGHT*scale)/2, scale)
         header(c, state)
         if state.page == 'play' then play(c, ui, state, now)
+        elseif state.page == 'boards' then gallery(c, ui, state)
+        elseif state.page == 'talents' then talentPage(c, ui, state)
         elseif state.page == 'duel' then duelPage(c, ui, state)
         elseif state.page == 'records' then records(c, ui, state)
         else help(c, state) end

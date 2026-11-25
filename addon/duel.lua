@@ -74,6 +74,7 @@ function Duel.challenge(boardId, seed, modeId, maxAngle, timedCatcher)
 end
 
 function Duel.result(run)
+    if run.solo then return nil, "Play a friend challenge to share a replay." end
     local result = run:result()
     if result.phase ~= "won" and result.phase ~= "lost" then
         return nil, "Finish the round to share a replay."

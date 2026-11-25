@@ -29,6 +29,7 @@ Game.boards = {
     { id = "switchback", name = "Iron Switchback", description = "Alternating ramps link up along the walls.", targets = 22 },
     { id = "parallax", name = "Violet Parallax", description = "Twin arrowheads face an open central corridor.", targets = 18 },
     { id = "sundial", name = "Sunstone Dial", description = "Sweep through the rays above a broad pedestal.", targets = 20 },
+    { id = "aurora", name = "Aurora Span", description = "An arched bridge hangs above drifting ribbons.", targets = 22 },
 }
 
 Game.modes = {
@@ -263,9 +264,32 @@ local function sundial(pegs)
     end
 end
 
+local function aurora(pegs)
+    for rail = 0, 1 do
+        local count, extent = 15 - rail, 317 - rail * 12
+        for point = 0, count - 1 do
+            local u = point * 2 / (count - 1) - 1
+            local x = Game.launcherX + extent * u
+            local arch = 100 + 75 * u * u + 18 * u
+            local ribbon = 304 + 24 * math.sin((u + 0.17) * math.pi) - 11 * math.cos(2 * math.pi * u)
+            addPeg(pegs, x, arch + rail * 45)
+            addPeg(pegs, x, ribbon + rail * 53)
+        end
+    end
+    local anchors = { { 150, 245 }, { 239, 224 }, { 327, 202 }, { 417, 201 }, { 511, 218 }, { 601, 241 } }
+    for _, anchor in ipairs(anchors) do
+        addPeg(pegs, anchor[1], anchor[2])
+    end
+    for point = 0, 12 do
+        local u = point / 6 - 1
+        addPeg(pegs, Game.launcherX + 308 * u, 425 + 17 * math.cos(u * math.pi))
+    end
+end
+
 local layouts = {
     grove = grove, foundry = foundry, basin = basin, crown = crown, tide = tide, vault = vault,
     harbor = harbor, spire = spire, delta = delta, switchback = switchback, parallax = parallax, sundial = sundial,
+    aurora = aurora,
 }
 
 local function colorPegs(pegs, targetCount, seed)
@@ -291,7 +315,12 @@ function Game.isTerminal(phase)
     return phase == "won" or phase == "lost"
 end
 
-function Game.new(boardId, seed, modeId, maxAngle, timedCatcher)
+local function option(options, key, maximum)
+    local value = options and options[key]
+    return finite(value) and math.floor(clamp(value, 0, maximum or 1000000)) or 0
+end
+
+function Game.new(boardId, seed, modeId, maxAngle, timedCatcher, soloOptions)
     local board = descriptor(Game.boards, boardId)
     local mode = descriptor(Game.modes, modeId)
     assert(board, "Unknown peg board")
@@ -306,6 +335,7 @@ function Game.new(boardId, seed, modeId, maxAngle, timedCatcher)
         timedCatcher = maxAngle ~= Game.legacyMaxAngle
     end
     assert(type(timedCatcher) == "boolean", "Invalid catcher rules")
+    assert(soloOptions == nil or type(soloOptions) == "table", "Invalid solo rules")
     if not finite(seed) then
         seed = 1
     end
@@ -315,6 +345,17 @@ function Game.new(boardId, seed, modeId, maxAngle, timedCatcher)
     layouts[board.id](pegs)
     colorPegs(pegs, board.targets, seed)
 
+    local guideSteps = maxAngle == Game.legacyMaxAngle and mode.id == "standard" and 72 or mode.guideSteps
+    local maxCatcherWidth = Game.width - 26
+    local baseCatcherWidth = Game.catcherWidth + option(soloOptions, "catcherWidth", maxCatcherWidth - Game.catcherWidth)
+    local extraShots = option(soloOptions, "extraShots", Game.maxRounds - mode.shots)
+    local greenBoost = option(soloOptions, "greenBoost", 530)
+    local launcherStyle = soloOptions and soloOptions.launcher == "catchfield" and "catchfield" or "ricochet"
+    local sweepWidth = baseCatcherWidth
+    if launcherStyle == "catchfield" then
+        sweepWidth = math.min(maxCatcherWidth, baseCatcherWidth + 54 + math.floor(greenBoost * 0.35 + 0.5))
+    end
+
     return setmetatable({
         width = Game.width,
         height = Game.height,
@@ -323,7 +364,11 @@ function Game.new(boardId, seed, modeId, maxAngle, timedCatcher)
         pegRadius = Game.pegRadius,
         ballRadius = Game.ballRadius,
         catcherY = Game.catcherY,
-        catcherWidth = Game.catcherWidth,
+        catcherWidth = baseCatcherWidth,
+        baseCatcherWidth = baseCatcherWidth,
+        catcherSweepWidth = sweepWidth,
+        catchfieldActive = false,
+        launcherStyle = launcherStyle,
         maxAngle = maxAngle,
         timedCatcher = timedCatcher,
         catcherClock = seed % Game.catcherCycleTicks,
@@ -331,12 +376,28 @@ function Game.new(boardId, seed, modeId, maxAngle, timedCatcher)
         catcherBlend = 0,
         boardId = board.id,
         modeId = mode.id,
-        guideSteps = maxAngle == Game.legacyMaxAngle and mode.id == "standard" and 72 or mode.guideSteps,
+        guideSteps = guideSteps + option(soloOptions, "guideSteps", ticksPerSecond * 2),
+        solo = soloOptions ~= nil,
+        greenBoost = greenBoost,
+        resonanceHits = 3 + option(soloOptions, "resonanceHits", #pegs),
+        unusedShotValue = 500 + option(soloOptions, "bankBonus"),
+        catchPoints = option(soloOptions, "catchPoints"),
+        comboPoints = option(soloOptions, "comboPoints"),
+        fullClearBonus = 2500 + option(soloOptions, "fullClearBonus"),
+        blueBonus = option(soloOptions, "blueBonus"),
+        targetBonus = option(soloOptions, "targetBonus"),
         seed = seed,
         pegs = pegs,
         initialTargets = board.targets,
         remaining = board.targets,
-        shots = mode.shots,
+        totalPegs = #pegs,
+        pegsHit = 0,
+        remainingPegs = #pegs,
+        completionPercent = 0,
+        beaten = false,
+        fullCleared = false,
+        banked = false,
+        shots = mode.shots + extraShots,
         rounds = 0,
         catches = 0,
         score = 0,
@@ -465,19 +526,22 @@ function Run:launch(angle, catcherTick)
     self.combo = 0
     self.charge = 0
     self.power = nil
+    self.catchfieldActive = false
+    self.catcherWidth = self.baseCatcherWidth
     self.phase = "flight"
     self.events[#self.events + 1] = { type = "launch", x = self.ball.x, y = self.ball.y }
     return true
 end
 
 local function legacyCatcherX(run, round, time)
-    local amplitude = (run.width - run.catcherWidth) / 2 - 13
+    local amplitude = (run.width - run.catcherSweepWidth) / 2 - 13
     local phase = (run.seed % 1109) * 0.011 + round * 1.97
     return run.width / 2 + amplitude * math.sin(phase + time * 1.74)
 end
 
 local function timedCatcherX(run, tick)
-    local amplitude = (run.width - run.catcherWidth) / 2 - 13
+    -- Reserve room for the Catchfield extension throughout the sweep.
+    local amplitude = (run.width - run.catcherSweepWidth) / 2 - 13
     return run.width / 2 + amplitude * math.sin((tick % Game.catcherCycleTicks) * 2 * math.pi / Game.catcherCycleTicks)
 end
 
@@ -549,6 +613,10 @@ end
 
 local function registerHit(run, peg)
     peg.hit = true
+    run.pegsHit = run.pegsHit + 1
+    run.remainingPegs = run.totalPegs - run.pegsHit
+    run.completionPercent = math.floor(100 * run.pegsHit / run.totalPegs)
+    run.fullCleared = run.remainingPegs == 0
     run.combo = run.combo + 1
     run.bestCombo = math.max(run.combo, run.bestCombo)
     local multiplier = math.min(5, 1 + math.floor((run.combo - 1) / 3))
@@ -556,19 +624,30 @@ local function registerHit(run, peg)
         multiplier = multiplier * 2
         run.charge = run.charge - 1
     end
+    local extra = 0
     if peg.kind == "purple" then
-        run.charge = 3
+        run.charge = run.resonanceHits
     elseif peg.kind == "orange" then
         run.remaining = run.remaining - 1
+        run.beaten = run.remaining == 0
+        extra = run.targetBonus
+    elseif peg.kind == "blue" then
+        extra = run.blueBonus
     end
     run.power = run.charge > 0 and "resonance" or nil
 
-    local points = pegValues[peg.kind] * multiplier
+    local points = pegValues[peg.kind] * multiplier + extra
+    if run.combo >= 5 then
+        points = points + run.comboPoints
+    end
     run.score = run.score + points
     run.shotScore = run.shotScore + points
     run.events[#run.events + 1] = {
         type = "hit", kind = peg.kind, x = peg.x, y = peg.y, points = points, combo = run.combo,
     }
+    if run.solo and peg.kind == "orange" and run.beaten then
+        run.events[#run.events + 1] = { type = "beat", x = peg.x, y = peg.y }
+    end
 end
 
 local function bounce(run, peg, squared)
@@ -593,14 +672,46 @@ local function bounce(run, peg, squared)
     if not peg.hit then
         registerHit(run, peg)
         if peg.kind == "green" then
-            local side = ball.vx >= 0 and 1 or -1
-            ball.vx = clamp(ball.vx + 105 * side, -530, 530)
-            ball.vy = math.min(ball.vy, -210)
+            if run.launcherStyle == "catchfield" then
+                run.catchfieldActive = true
+                run.catcherWidth = run.catcherSweepWidth
+            else
+                local side = ball.vx >= 0 and 1 or -1
+                ball.vx = clamp(ball.vx + (105 + run.greenBoost) * side, -530, 530)
+                ball.vy = math.min(ball.vy, -210 - run.greenBoost)
+            end
         end
     elseif math.abs(ball.vx) < 18 then
         -- A nearly vertical rebound eventually slips off a peg it has already scored.
         ball.vx = nx < 0 and -55 or 55
     end
+end
+
+local function bonus(run, points, kind)
+    if points > 0 then
+        run.score = run.score + points
+        run.events[#run.events + 1] = { type = "bonus", points = points, kind = kind }
+    end
+end
+
+local function finish(run, phase)
+    run.phase = phase
+    if phase == "won" then
+        bonus(run, run.shots * run.unusedShotValue, run.solo and "unused" or nil)
+        if run.solo and run.fullCleared then
+            bonus(run, run.fullClearBonus, "full")
+        end
+    end
+    run.events[#run.events + 1] = { type = "finish", phase = phase }
+end
+
+function Run:bank()
+    if not self.solo or self.phase ~= "ready" or not self.beaten then
+        return false
+    end
+    self.banked = true
+    finish(self, "won")
+    return true
 end
 
 local function settle(run)
@@ -613,23 +724,15 @@ local function settle(run)
     run.accumulator = 0
     run.charge = 0
     run.power = nil
+    run.catchfieldActive = false
+    run.catcherWidth = run.baseCatcherWidth
     run.lastShot = run.shotScore
 
-    if run.remaining == 0 then
-        run.phase = "won"
-        local bonus = run.shots * 500
-        if bonus > 0 then
-            run.score = run.score + bonus
-            run.events[#run.events + 1] = { type = "bonus", points = bonus }
-        end
-    elseif run.shots == 0 or run.rounds >= Game.maxRounds then
-        run.phase = "lost"
+    local exhausted = run.shots == 0 or run.rounds >= Game.maxRounds
+    if exhausted or (run.solo and run.fullCleared) or (not run.solo and run.remaining == 0) then
+        finish(run, run.remaining == 0 and "won" or "lost")
     else
         run.phase = "ready"
-    end
-    if Game.isTerminal(run.phase) then
-        run.events[#run.events + 1] = { type = "finish", phase = run.phase }
-    else
         run.events[#run.events + 1] = { type = "settle" }
     end
 end
@@ -658,7 +761,11 @@ local function simulate(run)
         if math.abs(x - center) <= run.catcherWidth / 2 then
             run.shots = run.shots + 1
             run.catches = run.catches + 1
-            run.events[#run.events + 1] = { type = "catch", x = x, y = run.catcherY }
+            run.score = run.score + run.catchPoints
+            run.shotScore = run.shotScore + run.catchPoints
+            run.events[#run.events + 1] = {
+                type = "catch", x = x, y = run.catcherY, points = run.catchPoints > 0 and run.catchPoints or nil,
+            }
             settle(run)
             return
         end
@@ -703,6 +810,13 @@ function Run:result()
         remaining = self.remaining,
         initialTargets = self.initialTargets,
         bestCombo = self.bestCombo,
+        totalPegs = self.totalPegs,
+        pegsHit = self.pegsHit,
+        remainingPegs = self.remainingPegs,
+        completionPercent = self.completionPercent,
+        beaten = self.beaten,
+        fullCleared = self.fullCleared,
+        banked = self.banked,
     }
 end
 

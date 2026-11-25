@@ -28,7 +28,7 @@ def main():
                 sys.executable, str(packager),
                 "--name", "pegworks", "--kind", "script", "--version", args.version,
                 "--min-client", "0.7.2-beta", "--author", "fryguy503",
-                "--description", "Peggle for Hailstone. Twelve original boards, local records, and friend duels.",
+                "--description", "Peggle for Hailstone. Thirteen boards, solo talents, 100% clears, and friend duels.",
                 "--caps", "commands,ui,chat,events", "--autoload",
                 "--dir", str(stage), "--out", str(root / "dist"),
             ],

@@ -5,33 +5,18 @@ local Game = require('game')
 local Duel = require('duel')
 local Cabinet = require('cabinet')
 local ScoreChat = require('score_chat')
+local Progress = require('progress')
 
 local profilePath = mq.configDir..'/pegworks.lua'
 
-local function count(value)
-    return type(value) == 'number' and value >= 0 and value <= 1000000000 and math.floor(value) or 0
-end
-
 local function loadProfile()
-    local profile = {records={}, runs=0, bestCombo=0}
+    local saved
     local chunk = loadfile(profilePath)
-    if not chunk then return profile end
-
-    local ok, saved = pcall(chunk)
-    if not ok or type(saved) ~= 'table' then return profile end
-    profile.runs, profile.bestCombo = count(saved.runs), count(saved.bestCombo)
-    if type(saved.records) == 'table' then
-        for _, board in ipairs(Game.boards) do
-            for _, mode in ipairs(Game.modes) do
-                local key = board.id..'/'..mode.id
-                local entry = saved.records[key]
-                if type(entry) == 'table' then
-                    profile.records[key] = {score=count(entry.score), cleared=entry.cleared == true}
-                end
-            end
-        end
+    if chunk then
+        local ok, value = pcall(chunk)
+        if ok then saved = value end
     end
-    return profile
+    return Progress.load(Game, saved)
 end
 
 local function indexOf(list, id)
@@ -48,22 +33,40 @@ local function freshSeed()
 end
 
 local state = {
-    Game=Game, ScoreChat=ScoreChat, duel=Duel.new(Game, mq), profile=loadProfile(), page='play',
+    Game=Game, Progress=Progress, ScoreChat=ScoreChat, duel=Duel.new(Game, mq), profile=loadProfile(), page='play',
     open=(...) == 'open', peer='', inCode='', outCode='', effects={}, trail={},
-    now=0, dt=0, noticeUntil=0, trailTime=0, shareChannel=ScoreChat.channels[1].id,
+    now=0, dt=0, noticeUntil=0, trailTime=0, shareChannel=ScoreChat.channels[1].id, boardPreviews={},
 }
 
+for index, board in ipairs(Game.boards) do
+    state.boardPreviews[board.id] = Game.new(board.id, 41753*index).pegs
+end
+
+function state:recordRun(run)
+    if self.recordedRun == run or not Game.isTerminal(run.phase) then return end
+    local result = Progress.applyResult(self.profile, run:result())
+    self.recordedRun, self.profileDirty = run, true
+    self.earnedPoints = result and result.pointsEarned or 0
+    self.finishedAt = self.now
+end
+
 function state:start(boardId, seed, modeId, challenge, maxAngle, timedCatcher)
-    self.run = assert(Game.new(boardId, seed, modeId, maxAngle, timedCatcher))
+    local previous = self.run
+    if previous then
+        if previous.solo and previous.beaten and previous.phase == 'ready' then previous:bank() end
+        self:recordRun(previous)
+    end
+    local soloOptions = not challenge and Progress.modifiers(self.profile) or nil
+    self.run = Game.new(boardId, seed, modeId, maxAngle, timedCatcher, soloOptions)
     self.challenge = challenge
     self.trail, self.effects = {}, {}
-    self.notice, self.guideAngle, self.mouseX, self.mouseY = nil, nil, nil, nil
-    self.trailTime = 0
+    self.notice, self.beatAt, self.finishedAt, self.guideAngle = nil, nil, nil, nil
+    self.mouseX, self.mouseY = nil, nil
+    self.trailTime, self.earnedPoints = 0, 0
 end
 
 function state:record(boardId, modeId)
-    local key = (boardId or self.run.boardId)..'/'..(modeId or self.run.modeId)
-    return self.profile.records[key] or {}
+    return Progress.record(self.profile, boardId or self.run.boardId, modeId or self.run.modeId)
 end
 
 function state:selectScore(board, mode, score)
@@ -91,6 +94,11 @@ function state:pickBoard(delta)
     self:start(board.id, freshSeed(), self.run.modeId, false)
 end
 
+function state:chooseBoard(boardId)
+    self:start(boardId, freshSeed(), self.run.modeId, false)
+    self.page = 'play'
+end
+
 function state:pickMode()
     local index = indexOf(Game.modes, self.run.modeId)
     local mode = Game.modes[index % #Game.modes+1]
@@ -103,6 +111,39 @@ function state:launch()
         self.notice, self.guideAngle = nil, nil
         self.trailTime = 0
     end
+end
+
+function state:bank()
+    if self.run:bank() then self:recordRun(self.run) end
+end
+
+local function talentEdit(self, ok, issue)
+    self.talentIssue = not ok
+    if not ok then
+        self.talentStatus = issue
+        return
+    end
+
+    self.profileDirty = true
+    local run = self.run
+    if run.solo and run.rounds == 0 then
+        self:restart()
+        self.talentStatus = 'Applied to your current board.'
+    else
+        self.talentStatus = 'Applies to your next solo run.'
+    end
+end
+
+function state:buyTalent(id)
+    talentEdit(self, Progress.buy(self.profile, id))
+end
+
+function state:resetTalents()
+    talentEdit(self, Progress.reset(self.profile))
+end
+
+function state:selectLauncher(id)
+    if self.profile.launcher ~= id then talentEdit(self, Progress.selectLauncher(self.profile, id)) end
 end
 
 function state:status(message, issue)
@@ -124,6 +165,7 @@ function state:createChallenge()
 end
 
 function state:shareResult()
+    if self.run.solo then return self:status('Play a friend challenge to share a replay.', true) end
     local code, errorText = Duel.result(self.run)
     if not code then return self:status(errorText, true) end
     self.outCode = code
@@ -188,18 +230,16 @@ local function serviceScoreChat()
     end
 end
 
-local function rememberResult(run)
-    local profile = state.profile
-    local record = state:record()
-    profile.records[run.boardId..'/'..run.modeId] = {
-        score=math.max(record.score or 0, run.score), cleared=record.cleared or run.phase == 'won',
-    }
-    profile.bestCombo = math.max(profile.bestCombo, run.bestCombo)
-    profile.runs = profile.runs + 1
-    local ok, result = pcall(mq.pickle, profilePath, profile)
+local function saveProfile(now)
+    if not state.profileDirty or now < (state.saveAfter or 0) then return end
+    local ok, result = pcall(mq.pickle, profilePath, state.profile)
     if not ok or result == false then
-        state.notice, state.noticeUntil = 'Records could not be saved', state.now+4
+        state.notice, state.noticeUntil = 'Progress could not be saved', now+4
         state.noticeTone = 'red'
+        state.talentStatus, state.talentIssue = 'Progress could not be saved. Retrying.', true
+        state.saveAfter = now+2
+    else
+        state.profileDirty, state.saveAfter = false, nil
     end
 end
 
@@ -208,16 +248,24 @@ local function updateRun(dt, now)
     local events = run:update(dt)
     for _, event in ipairs(events) do
         if event.type == 'hit' or event.type == 'catch' then
-            state.effects[#state.effects+1] = {x=event.x, y=event.y, kind=event.kind, points=event.points, time=now}
+            local label
+            if event.kind == 'green' then label = run.launcherStyle == 'catchfield' and 'CATCHFIELD' or 'BOOST' end
+            state.effects[#state.effects+1] = {
+                x=event.x, y=event.y, kind=event.kind, points=event.points, time=now, label=label,
+            }
             if event.type == 'catch' then
                 state.notice, state.noticeUntil = 'Catch!  +1 shot', now+1.85
+                if event.points then state.notice = state.notice..'  + '..event.points..' pts' end
                 state.noticeTone = 'gold'
             elseif event.kind == 'green' then
-                state.notice, state.noticeUntil = 'Ricochet boost', now+2.1
+                local power = run.launcherStyle == 'catchfield' and 'Catchfield' or 'Ricochet boost'
+                state.notice, state.noticeUntil = power, now+2.1
                 state.noticeTone = 'green'
             end
+        elseif event.type == 'beat' then
+            state.beatAt = now
         elseif event.type == 'finish' then
-            rememberResult(run)
+            state:recordRun(run)
         end
     end
     while state.effects[1] and (now-state.effects[1].time >= 0.62 or #state.effects > 20) do
@@ -256,6 +304,7 @@ while true do
     state.now, state.dt = now, math.max(0, math.min(0.10, now-last))
     last = now
     updateRun(state.dt, now)
+    saveProfile(now)
     serviceDuels()
     serviceScoreChat()
     mq.delay(10)
